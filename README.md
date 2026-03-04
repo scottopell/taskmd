@@ -14,33 +14,46 @@ tasks/
   0003-p3-blocked--waiting-on-api.md
 ```
 
-## Install
-
-```bash
-# From GitHub
-uv pip install git+https://github.com/scottopell/taskmd.git
-
-# Or with pip
-pip install git+https://github.com/scottopell/taskmd.git
-```
-
 ## CLI
 
+Run directly with `uvx` — no install needed:
+
 ```bash
-taskmd validate        # check all task files for consistency
-taskmd fix             # auto-repair (missing dates, mismatched filenames)
-taskmd next            # print next available task number
+uvx --from "git+https://github.com/scottopell/taskmd.git" taskmd validate
+uvx --from "git+https://github.com/scottopell/taskmd.git" taskmd fix
+uvx --from "git+https://github.com/scottopell/taskmd.git" taskmd next
 ```
+
+Or install as a persistent tool:
+
+```bash
+uv tool install git+https://github.com/scottopell/taskmd.git
+taskmd validate     # check all task files for consistency
+taskmd fix          # auto-repair (missing dates, mismatched filenames)
+taskmd next         # print next available task number
+```
+
+All commands default to `./tasks` — pass a path to use a different directory.
 
 ## Library
 
+Install as a dependency:
+
+```bash
+uv pip install git+https://github.com/scottopell/taskmd.git
+```
+
 ```python
-from taskmd import validate, fix, next_number
+from taskmd import validate, fix, next_number, list_tasks
 
 result = validate("tasks")
 if not result.ok:
     for err in result.errors:
         print(err)
+
+tasks = list_tasks("tasks")
+for t in tasks:
+    print(f"{t.number:04d} {t.priority} {t.status:12s} {t.slug}")
 
 n = next_number("tasks")
 print(f"Next task: {n:04d}")
