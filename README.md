@@ -3,7 +3,8 @@
 Task.md is a is structured but simple task management system.
 Tasks can be used as prompts for LLM Agents or tickets for humans.
 
-Each task is a markdown file. Metadata lives in the filename and YAML frontmatter.
+Each task is a markdown file.
+Metadata lives in the filename and YAML frontmatter.
 No database, no config file — the filesystem is the data store, git is the audit trail.
 
 ```

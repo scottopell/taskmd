@@ -2,9 +2,9 @@
 
 ## Architecture Overview (REQ-TM-001, REQ-TM-010)
 
-task.md is a single-file Python CLI tool that operates on a directory of markdown
-files. No database, no configuration file, no external dependencies beyond Python's
-standard library. The filesystem IS the database; git IS the audit trail.
+task.md is a single-file Python CLI tool that operates on a directory of markdown files.
+No database, no configuration file, no external dependencies beyond Python’s standard
+library. The filesystem IS the database; git IS the audit trail.
 
 ```
 project/
@@ -54,14 +54,15 @@ FILENAME_PATTERN = r"^(\d{4})-(p[0-4])-(ready|in-progress|blocked|done|wont-do|b
 
 Pattern: `NNNN-pX-status--slug.{qaplan,qareport}.md`
 
-Associated with a task by sharing the same number prefix. Skipped during validation
-and fix. Detection rule: any `.md` file whose stem contains a second dot segment
-(i.e., the filename matches `*.*.md` after stripping the `.md` extension).
+Associated with a task by sharing the same number prefix.
+Skipped during validation and fix.
+Detection rule: any `.md` file whose stem contains a second dot segment (i.e., the
+filename matches `*.*.md` after stripping the `.md` extension).
 
 ### Status Definitions
 
 | Status | Meaning |
-|--------|---------|
+| --- | --- |
 | `ready` | Prepared and ready to start |
 | `in-progress` | Currently being worked on |
 | `blocked` | Cannot proceed — external dependency, decision needed, or waiting |
@@ -80,11 +81,9 @@ taskmd validate [tasks/]
 Algorithm:
 1. Glob `*.md` in task directory (default: `./tasks/`)
 2. Skip template file (`_TEMPLATE.md`) and ancillary files (`*.*.md` pattern)
-3. For each remaining file:
-   a. Check frontmatter exists and is well-formed
-   b. Check required fields present with valid values
-   c. Check `created` matches YYYY-MM-DD format
-   d. Parse filename and check it matches frontmatter
+3. For each remaining file: a. Check frontmatter exists and is well-formed b. Check
+   required fields present with valid values c. Check `created` matches YYYY-MM-DD
+   format d. Parse filename and check it matches frontmatter
 4. After all files: check for duplicate task numbers
 5. Report errors or success count
 6. Exit 0 on success, 1 on errors
@@ -97,15 +96,14 @@ taskmd fix [tasks/]
 
 Algorithm:
 1. Glob `*.md` in task directory (same skip rules as validate)
-2. For each file:
-   a. If `created` missing or malformed:
-      - Infer date (git log, file mtime, or today — see Date Inference)
-      - If `created:` line exists in frontmatter: replace in-place via regex
-      - If no `created:` line: insert after opening `---`
-   b. If filename doesn't match frontmatter:
-      - Generate expected 4-digit filename
-      - If target exists: report conflict, skip
-      - Otherwise: rename
+2. For each file: a. If `created` missing or malformed:
+   - Infer date (git log, file mtime, or today — see Date Inference)
+   - If `created:` line exists in frontmatter: replace in-place via regex
+   - If no `created:` line: insert after opening `---` b. If filename doesn’t match
+     frontmatter:
+   - Generate expected 4-digit filename
+   - If target exists: report conflict, skip
+   - Otherwise: rename
 3. Report summary (patched N, renamed N)
 
 ### `next` (REQ-TM-006)
@@ -124,19 +122,21 @@ Algorithm:
 
 When `created` needs to be inferred, try in order:
 
-1. **Git history:** `git log --follow --diff-filter=A --format=%as {path}` — take
-   the last line (oldest commit adding the file).
+1. **Git history:** `git log --follow --diff-filter=A --format=%as {path}` — take the
+   last line (oldest commit adding the file).
 2. **File modification time:** `stat` mtime, converted to YYYY-MM-DD.
-3. **Today's date:** Fallback if both above fail.
+3. **Today’s date:** Fallback if both above fail.
 
-Git is optional — date inference degrades gracefully if git is not installed or the
-file is not in a git repository.
+Git is optional — date inference degrades gracefully if git is not installed or the file
+is not in a git repository.
 
 ## Frontmatter Parsing
 
-Simple line-by-line key-value extraction. Split each line on the FIRST colon only
-(to handle values containing colons, e.g., titles with colons). No YAML library
-required — frontmatter uses only flat key-value pairs, never nested structures.
+Simple line-by-line key-value extraction.
+Split each line on the FIRST colon only (to handle values containing colons, e.g.,
+titles with colons).
+No YAML library required — frontmatter uses only flat key-value pairs, never nested
+structures.
 
 ```python
 key, _, value = line.partition(":")
@@ -148,10 +148,11 @@ correctly as key=`title`, value=`"QA Report: Streaming"`.
 
 ## Body Conventions (REQ-TM-009)
 
-The body after frontmatter is free-form markdown. Common sections by usage:
+The body after frontmatter is free-form markdown.
+Common sections by usage:
 
 | Section | Purpose | Typical use |
-|---------|---------|-------------|
+| --- | --- | --- |
 | `## Summary` | What needs doing | All tasks |
 | `## Context` | Why this task exists | All tasks |
 | `## Acceptance Criteria` | Checkbox list | All tasks |
@@ -169,14 +170,13 @@ The template demonstrates the recommended structure but does not enforce it.
 
 The canonical workflow for any status change:
 
-1. Edit the `status:` field in the task's YAML frontmatter
+1. Edit the `status:` field in the task’s YAML frontmatter
 2. Run `taskmd fix` to rename the file to match
 3. Commit both the content change and the rename
 
 **Never rename task files directly.** Direct renames create frontmatter/filename
-disagreement that validation will catch, but the fix is more work than doing it
-right in the first place. Agents should be instructed to edit frontmatter, not
-rename files.
+disagreement that validation will catch, but the fix is more work than doing it right in
+the first place. Agents should be instructed to edit frontmatter, not rename files.
 
 ## File Organization (REQ-TM-007, REQ-TM-010)
 
@@ -186,5 +186,5 @@ tasks/
   _TEMPLATE.md      # Recommended starting point for new tasks
 ```
 
-No config file, no lockfile, no build step. Copy `taskmd.py` into any repository
-and run it.
+No config file, no lockfile, no build step.
+Copy `taskmd.py` into any repository and run it.

@@ -3,7 +3,6 @@ created: YYYY-MM-DD
 priority: p2
 status: ready
 ---
-
 # Task Title
 
 ## Summary

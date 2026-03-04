@@ -1,8 +1,8 @@
 # spEARS: Simple Project with EARS
 
-**spEARS** (Simple Project with Easy Approach to Requirements Syntax) is a
-lightweight requirements-based methodology that provides explicit traceability
-from business requirements → tests → code.
+**spEARS** (Simple Project with Easy Approach to Requirements Syntax) is a lightweight
+requirements-based methodology that provides explicit traceability from business
+requirements → tests → code.
 
 ## Table of Contents
 
@@ -20,12 +20,10 @@ from business requirements → tests → code.
 
 ### Core Principles
 
-1. **Requirements First**: Define what needs to be built before writing tests or
-   code
+1. **Requirements First**: Define what needs to be built before writing tests or code
 2. **Testable Specifications**: Every requirement must be verifiable
 3. **Immutable Traceability**: Requirements get permanent IDs that never change
-4. **Living Documentation**: Specs evolve with the codebase, not as separate
-   artifacts
+4. **Living Documentation**: Specs evolve with the codebase, not as separate artifacts
 5. **YAGNI/KISS**: Only use specs when they add clear value
 
 ### When to Create Specs
@@ -48,40 +46,40 @@ from business requirements → tests → code.
 
 ### Problems It Solves
 
-**Problem 1: "Why did we build this?"**
+**Problem 1: “Why did we build this?”**
 
-- Without documented requirements, future maintainers don't understand intent
-- Code comments describe "what" not "why"
+- Without documented requirements, future maintainers don’t understand intent
+- Code comments describe “what” not “why”
 - Git history provides implementation details, not business context
 
 **Solution:** `requirements.md` captures business need and acceptance criteria
 
-**Problem 2: "Is this feature complete?"**
+**Problem 2: “Is this feature complete?”**
 
-- No clear definition of "done"
+- No clear definition of “done”
 - Edge cases discovered in production
 - Unclear verification status
 
-**Solution:** EARS format provides verifiable acceptance criteria,
-`executive.md` tracks status
+**Solution:** EARS format provides verifiable acceptance criteria, `executive.md` tracks
+status
 
-**Problem 3: "What will break if I change this?"**
+**Problem 3: “What will break if I change this?”**
 
 - Hard to find all code related to a feature
-- Implementation doesn't clearly link to requirements
+- Implementation doesn’t clearly link to requirements
 - Refactoring is risky without understanding dependencies
 
-**Solution:** Requirement IDs create grep-able links between requirements,
-tests, and code
+**Solution:** Requirement IDs create grep-able links between requirements, tests, and
+code
 
-**Problem 4: "What tests do I need to write?"**
+**Problem 4: “What tests do I need to write?”**
 
 - Easy to miss edge cases
 - Tests written after code may just verify current behavior
 - No systematic approach to test planning
 
-**Solution:** EARS statements directly translate to test cases (one WHEN/SHALL =
-one test)
+**Solution:** EARS statements directly translate to test cases (one WHEN/SHALL = one
+test)
 
 ## The Three-Document Pattern
 
@@ -97,7 +95,7 @@ specs/feature-name/
 ### Separation of Concerns
 
 | Document | Contains | Never Contains |
-|----------|----------|----------------|
+| --- | --- | --- |
 | **requirements.md** | EARS requirements, rationale, user stories | Status, implementation details, test coverage |
 | **design.md** | Architecture, data models, API contracts, file locations | Status, requirement definitions, features without REQ-* |
 | **executive.md** | Status table, summaries, verification coverage | Code blocks, detailed requirements |
@@ -106,27 +104,30 @@ specs/feature-name/
 
 The three documents have different relationships with time:
 
-- **requirements.md**: Timeless definitions. Requirements exist before
-  implementation. An unimplemented requirement (❌ status) is still a valid,
-  in-scope requirement - it's just not built yet.
+- **requirements.md**: Timeless definitions.
+  Requirements exist before implementation.
+  An unimplemented requirement (❌ status) is still a valid, in-scope requirement - it’s
+  just not built yet.
 
-- **design.md**: Can be slightly ahead of reality. Describes HOW to build
-  requirements. May document the approach for not-yet-implemented requirements.
+- **design.md**: Can be slightly ahead of reality.
+  Describes HOW to build requirements.
+  May document the approach for not-yet-implemented requirements.
   **Critical rule:** All content must trace to a REQ-* in requirements.md.
-  Content without a corresponding requirement is scope creep and belongs in an
-  issue tracker.
+  Content without a corresponding requirement is scope creep and belongs in an issue
+  tracker.
 
-- **executive.md**: The temporal link. The ONLY document that must reflect
-  current reality. Tracks where the spec is in its development journey:
-  - At 0%: "Nothing implemented, here's what's planned"
-  - At 50%: "ABC complete, XYZ is next"
+- **executive.md**: The temporal link.
+  The ONLY document that must reflect current reality.
+  Tracks where the spec is in its development journey:
+  - At 0%: “Nothing implemented, here’s what’s planned”
+  - At 50%: “ABC complete, XYZ is next”
   - At 100%: A summary of the complete feature
 
 ## EARS Format Guide
 
-EARS (Easy Approach to Requirements Syntax) was developed at Rolls-Royce for
-aviation systems. It provides a simple, consistent structure for writing
-unambiguous requirements.
+EARS (Easy Approach to Requirements Syntax) was developed at Rolls-Royce for aviation
+systems.
+It provides a simple, consistent structure for writing unambiguous requirements.
 
 ### Basic Structure
 
@@ -243,8 +244,7 @@ THE SYSTEM SHALL allow new requests from previously blocked IPs
 
 Use immutable IDs: `REQ-[ABBREV]-###`
 
-- **[ABBREV]**: Short abbreviation (e.g., RL for Rate Limiting, UA for User
-  Auth)
+- **[ABBREV]**: Short abbreviation (e.g., RL for Rate Limiting, UA for User Auth)
 - **###**: Zero-padded sequential number (001, 002, etc.)
 - **Once assigned, IDs are NEVER reused or changed**
 
@@ -277,12 +277,11 @@ Titles SHALL describe USER BENEFITS, not system features.
 
 Every rationale MUST answer one of these questions:
 
-- **"Why does the USER care?"** - What problem does this solve for them?
-- **"Does this provide value to the user?"** - What tangible benefit do they
-  get?
+- **“Why does the USER care?”** - What problem does this solve for them?
+- **“Does this provide value to the user?”** - What tangible benefit do they get?
 
-These are two sides of the same coin. spEARS projects emphasize incremental
-user-facing value over technical concerns.
+These are two sides of the same coin.
+spEARS projects emphasize incremental user-facing value over technical concerns.
 
 **Good Rationale (User Value Focused):**
 
@@ -316,8 +315,8 @@ ProjectName/
 └── README.md
 ```
 
-Even simple projects should identify their initial feature and create a spec for
-it. This maintains consistency and makes it easy to add more features later.
+Even simple projects should identify their initial feature and create a spec for it.
+This maintains consistency and makes it easy to add more features later.
 
 ### Naming Conventions
 
@@ -370,30 +369,28 @@ THE SYSTEM SHALL [behavior]
 
 - NO status fields (status lives in executive.md)
 - NO implementation sections (implementation lives in design.md)
-- Git history shows evolution (no "Updated YYYY-MM-DD" notes)
+- Git history shows evolution (no “Updated YYYY-MM-DD” notes)
 - Requirements can be added, modified, or deprecated (ID never changes)
 
 ### design.md Template
 
 **Purpose:** design.md serves two critical roles:
 
-1. **During planning:** Technical design document where architecture decisions
-   are made and agreed upon BEFORE implementation begins. This is where the team
-   discusses approaches, trade-offs, and reaches consensus.
+1. **During planning:** Technical design document where architecture decisions are made
+   and agreed upon BEFORE implementation begins.
+   This is where the team discusses approaches, trade-offs, and reaches consensus.
 
-2. **During/after implementation:** Living documentation that reflects the
-   actual system. Updated as implementation reveals new insights or requirements
-   evolve.
+2. **During/after implementation:** Living documentation that reflects the actual
+   system. Updated as implementation reveals new insights or requirements evolve.
 
-**Key principle:** Implementation should follow design, not the other way
-around. Write design.md first, get team agreement, then implement. Update
-design.md when reality diverges from plan.
+**Key principle:** Implementation should follow design, not the other way around.
+Write design.md first, get team agreement, then implement.
+Update design.md when reality diverges from plan.
 
 **Traceability rule:** Every section in design.md must trace to a requirement in
-requirements.md. If you find yourself writing about features or capabilities
-that don't have a REQ-* identifier, that content belongs in an issue tracker,
-not the spec. This prevents design.md from becoming a roadmap for undefined
-work.
+requirements.md. If you find yourself writing about features or capabilities that don’t
+have a REQ-* identifier, that content belongs in an issue tracker, not the spec.
+This prevents design.md from becoming a roadmap for undefined work.
 
 ```markdown
 # [Feature Name] - Technical Design
@@ -436,8 +433,8 @@ work.
 
 ### executive.md Template
 
-**Purpose:** Authoritative status tracking. Target persona: busy technical
-leader who wants essential facts.
+**Purpose:** Authoritative status tracking.
+Target persona: busy technical leader who wants essential facts.
 
 ```markdown
 # [Feature Name] - Executive Summary
@@ -477,10 +474,10 @@ leader who wants essential facts.
 - NO fluff
 - Include requirement titles in table
 
-**Code in executive.md - What's Allowed:**
+**Code in executive.md - What’s Allowed:**
 
 | Allowed | Prohibited |
-|---------|------------|
+| --- | --- |
 | Inline backticks for technical terms (`config.yaml`, `REQ-XX-001`) | Code blocks (triple backticks) |
 | File paths (`src/auth/login.ts`) | Multi-line code examples |
 | Environment variables (`$API_KEY`) | Function/method implementations |
@@ -508,6 +505,7 @@ leader who wants essential facts.
 **Steps:**
 
 1. Update `executive.md` status (❌ → 🔄)
+
 2. Write tests with requirement references:
 
    ```typescript
@@ -527,6 +525,7 @@ leader who wants essential facts.
    ```
 
 4. Update `design.md` with implementation details
+
 5. Update `executive.md` status (🔄 → ✅)
 
 **Output:** Implemented feature with complete traceability
@@ -536,11 +535,14 @@ leader who wants essential facts.
 **Steps:**
 
 1. Review existing `requirements.md`
+
 2. If new requirement needed: add with next sequential ID (NEVER reuse IDs)
-3. If existing requirement changes: update EARS statements (git shows evolution)
-   and iterate on `design.md`
+
+3. If existing requirement changes: update EARS statements (git shows evolution) and
+   iterate on `design.md`
 
 4. Update implementation with requirement comments
+
 5. Update `executive.md` status
 
 ### 4. Deprecating a Requirement
@@ -548,6 +550,7 @@ leader who wants essential facts.
 **Steps:**
 
 1. Do NOT delete from `requirements.md`
+
 2. Add deprecation note:
 
    ```markdown
@@ -561,6 +564,7 @@ leader who wants essential facts.
    ```
 
 3. Update `executive.md` status
+
 4. Add deprecation comments to code
 
 ## Traceability
@@ -666,32 +670,34 @@ Footer displays `window.__GIT_SHA__` injected at build time. Falls back to "unkn
 
 ### Q: Do I need specs for bug fixes?
 
-**A:** Usually no. For simple bugs: fix, add regression test, reference issue in
-commit. For bugs revealing missing requirements: add requirement, write test,
-implement fix.
+**A:** Usually no. For simple bugs: fix, add regression test, reference issue in commit.
+For bugs revealing missing requirements: add requirement, write test, implement fix.
 
 ### Q: When do I create a new spec vs add to existing?
 
-**A:** Create new when feature is logically independent. Add to existing when it
-extends current capability or shares architecture.
+**A:** Create new when feature is logically independent.
+Add to existing when it extends current capability or shares architecture.
 
 ### Q: What if requirements change frequently?
 
-**A:** EARS handles change well. Add new requirements with new IDs. Update
-existing statements (git shows history). Deprecate obsolete requirements (don't
-delete). Immutable IDs provide stability.
+**A:** EARS handles change well.
+Add new requirements with new IDs.
+Update existing statements (git shows history).
+Deprecate obsolete requirements (don’t delete).
+Immutable IDs provide stability.
 
-### Q: Isn't this overhead?
+### Q: Isn’t this overhead?
 
-**A:** Upfront cost, long-term savings. 15-30 minutes to write requirements
-saves hours debugging unclear requirements, days refactoring untested code,
-weeks onboarding developers.
+**A:** Upfront cost, long-term savings.
+15-30 minutes to write requirements saves hours debugging unclear requirements, days
+refactoring untested code, weeks onboarding developers.
 
 ### Q: How detailed should EARS statements be?
 
-**A:** Detailed enough to implement clearly. If multiple interpretations
-possible → too vague. If describes implementation → too detailed. Good test: Can
-someone else implement from requirements alone?
+**A:** Detailed enough to implement clearly.
+If multiple interpretations possible → too vague.
+If describes implementation → too detailed.
+Good test: Can someone else implement from requirements alone?
 
 ### Q: Can requirements reference other requirements?
 
@@ -705,7 +711,7 @@ someone else implement from requirements alone?
 
 ### Q: How do I handle configuration-dependent requirements?
 
-**A:** Use EARS "WHERE" pattern:
+**A:** Use EARS “WHERE” pattern:
 
 ```markdown
 WHERE rate limiting is enabled
@@ -728,6 +734,6 @@ THE SYSTEM SHALL allow unlimited requests
 - **SPEARS_AGENT.md** - LLM/agent workflow rules and checklists
 - **specs/** - Feature specifications following this methodology
 
----
+* * *
 
 *spEARS: Simple Project with Easy Approach to Requirements Syntax*

@@ -1,7 +1,7 @@
 # spEARS Agent Rules
 
-This document provides **strict workflow rules** for LLM agents implementing the
-spEARS methodology. For full methodology details, see [SPEARS.md](./SPEARS.md).
+This document provides **strict workflow rules** for LLM agents implementing the spEARS
+methodology. For full methodology details, see [SPEARS.md](./SPEARS.md).
 
 ## Quick Reference
 
@@ -14,12 +14,14 @@ specs/feature-name/
 
 ### The Temporal Model
 
-- **requirements.md**: Timeless. Unimplemented requirements, defined as status
-  with a '❌', are valid scope - just not built yet.
-- **design.md**: Slightly ahead of reality. Describes HOW to build requirements.
+- **requirements.md**: Timeless.
+  Unimplemented requirements, defined as status with a ‘❌’, are valid scope - just not
+  built yet.
+- **design.md**: Slightly ahead of reality.
+  Describes HOW to build requirements.
   All content must trace to a REQ-*.
-- **executive.md**: The temporal link. ONLY document that must reflect current
-  reality.
+- **executive.md**: The temporal link.
+  ONLY document that must reflect current reality.
 
 ## When to Create Specs
 
@@ -37,7 +39,7 @@ specs/feature-name/
 - Documentation-only changes
 - Minor adjustments without new functionality
 
----
+* * *
 
 ## Workflow: Creating a New Feature Spec
 
@@ -77,7 +79,7 @@ THE SYSTEM SHALL [error handling]
 
 - NO status fields (status lives in executive.md)
 - NO implementation details (implementation lives in design.md)
-- NO "Updated YYYY-MM-DD" notes (git tracks history)
+- NO “Updated YYYY-MM-DD” notes (git tracks history)
 - IDs are IMMUTABLE once assigned
 
 ### Step 3: Write design.md
@@ -92,9 +94,9 @@ Document technical design decisions:
 - Error handling strategy
 - Key technical decisions and trade-offs
 
-**PURPOSE:** design.md is where the team discusses approaches and reaches
-consensus BEFORE writing code. Implementation follows design, not the other way
-around.
+**PURPOSE:** design.md is where the team discusses approaches and reaches consensus
+BEFORE writing code.
+Implementation follows design, not the other way around.
 
 **RULE:** Get team agreement on design.md before proceeding to implementation.
 
@@ -130,10 +132,9 @@ around.
 - Include requirement titles in table
 
 **Inline backticks ARE allowed** for technical terms (`config.yaml`), file paths
-(`src/auth.ts`), and requirement IDs (`REQ-XX-001`). Only code blocks are
-prohibited.
+(`src/auth.ts`), and requirement IDs (`REQ-XX-001`). Only code blocks are prohibited.
 
----
+* * *
 
 ## Workflow: Implementing Requirements
 
@@ -155,8 +156,8 @@ prohibited.
 - Get agreement on technical approach
 - **All content must trace to a REQ-* in requirements.md**
 
-**WHY:** Clear requirements + agreed design makes TDD powerful. You know exactly
-what to test because the expected behavior is unambiguous.
+**WHY:** Clear requirements + agreed design makes TDD powerful.
+You know exactly what to test because the expected behavior is unambiguous.
 
 ### Step 3: Update Status
 
@@ -164,8 +165,8 @@ In `executive.md`, change status: ❌ → 🔄
 
 ### Step 4: Write Tests
 
-TDD is recommended but not strictly required. Clear requirements and design make
-tests easier to write:
+TDD is recommended but not strictly required.
+Clear requirements and design make tests easier to write:
 
 ```text
 // @requirement REQ-XX-001
@@ -193,7 +194,7 @@ As implementation reveals new insights:
 
 In `executive.md`, change status: 🔄 → ✅
 
----
+* * *
 
 ## Workflow: Modifying Requirements
 
@@ -220,7 +221,7 @@ In `executive.md`, change status: 🔄 → ✅
 **Deprecation Reason:** [Why this was replaced]
 ```
 
----
+* * *
 
 ## Requirements Quality Checklist
 
@@ -231,8 +232,8 @@ In `executive.md`, change status: 🔄 → ✅
 - [ ] Title describes USER BENEFIT, not system feature
 - [ ] WHEN clause describes user action/context, not system internals
 - [ ] SHALL clause describes observable user outcome
-- [ ] Rationale answers "why does the user care?" OR "does this provide value to
-  the user?"
+- [ ] Rationale answers “why does the user care?”
+  OR “does this provide value to the user?”
 - [ ] Non-technical user could understand the value
 
 **Core principle:** spEARS projects emphasize incremental user-facing value over
@@ -242,7 +243,7 @@ technical concerns.
 
 - [ ] No data structure field names (geohash, latitude, timestamp)
 - [ ] No algorithm/technology names (Redis, JWT, HTTP endpoint)
-- [ ] No "HOW" details (belongs in design.md)
+- [ ] No “HOW” details (belongs in design.md)
 - [ ] No code-like language or jargon
 
 ### Testability Check
@@ -253,17 +254,17 @@ technical concerns.
 
 ### Self-Containment Check (CRITICAL - ALL DOCUMENTS)
 
-**This is the most violated principle.** All spec documents MUST be
-understandable without external context.
+**This is the most violated principle.** All spec documents MUST be understandable
+without external context.
 
 **Severity by document:**
 
-1. **design.md** - MOST CRITICAL. Free-form prose invites vague references. This
-   is where violations happen most.
-2. **executive.md** - HIGH. Summaries often reference "improvements" without
-   specifying what improved.
-3. **requirements.md** - MODERATE. EARS structure naturally guards against this,
-   but rationales can still violate.
+1. **design.md** - MOST CRITICAL. Free-form prose invites vague references.
+   This is where violations happen most.
+2. **executive.md** - HIGH. Summaries often reference “improvements” without specifying
+   what improved.
+3. **requirements.md** - MODERATE. EARS structure naturally guards against this, but
+   rationales can still violate.
 
 **Checklist:**
 
@@ -275,63 +276,62 @@ understandable without external context.
 
 **BANNED PHRASES (rewrite immediately):**
 
-- "as before" / "as currently implemented" / "previously"
-- "maintain existing behavior" / "continue to work as expected"
-- "as it does today" / "unchanged from current behavior"
-- "same as [other feature]" / "like the login flow"
-- "following the established pattern" / "the usual error handling"
-- "standard validation rules" / "default timeout values"
+- “as before” / “as currently implemented” / “previously”
+- “maintain existing behavior” / “continue to work as expected”
+- “as it does today” / “unchanged from current behavior”
+- “same as [other feature]” / “like the login flow”
+- “following the established pattern” / “the usual error handling”
+- “standard validation rules” / “default timeout values”
 
----
+* * *
 
 #### design.md Self-Containment Anti-Patterns
 
-**Implicit Versioning** - References "new/updated/improved" without specifying
-what:
+**Implicit Versioning** - References “new/updated/improved” without specifying what:
 
 | BAD | GOOD |
-|-----|------|
-| "Use the new validation logic" | "Validate email addresses using RFC 5322 regex pattern; reject addresses without @ symbol or with consecutive dots" |
-| "Apply updated rate limits" | "Rate limit: 100 requests per minute per API key, returning HTTP 429 with Retry-After header when exceeded" |
-| "The improved caching strategy" | "Cache user profile data with 15-minute TTL; invalidate on any profile update" |
-| "Modern authentication flow" | "Authentication via OAuth 2.0 Authorization Code flow with PKCE; access tokens expire after 1 hour, refresh tokens after 30 days" |
-| "Use revised error messages" | "Validation errors return JSON with 'field', 'code', and 'message' keys; message must be user-facing English text under 100 characters" |
-| "The refactored payment module" | "Payment processing: validate card via Stripe API, create pending transaction record, then capture payment; rollback transaction on capture failure" |
+| --- | --- |
+| “Use the new validation logic” | “Validate email addresses using RFC 5322 regex pattern; reject addresses without @ symbol or with consecutive dots” |
+| “Apply updated rate limits” | “Rate limit: 100 requests per minute per API key, returning HTTP 429 with Retry-After header when exceeded” |
+| “The improved caching strategy” | “Cache user profile data with 15-minute TTL; invalidate on any profile update” |
+| “Modern authentication flow” | “Authentication via OAuth 2.0 Authorization Code flow with PKCE; access tokens expire after 1 hour, refresh tokens after 30 days” |
+| “Use revised error messages” | “Validation errors return JSON with 'field', 'code', and 'message' keys; message must be user-facing English text under 100 characters” |
+| “The refactored payment module” | “Payment processing: validate card via Stripe API, create pending transaction record, then capture payment; rollback transaction on capture failure” |
 
 **Relative Comparisons** - Compares to unstated baseline:
 
 | BAD | GOOD |
-|-----|------|
-| "Faster than the current implementation" | "Search queries must return within 200ms at p95 for datasets under 1M records" |
-| "More secure than what we have" | "Passwords: minimum 12 characters, at least one uppercase, one lowercase, one number; bcrypt hashing with cost factor 12" |
-| "Simpler than the existing approach" | "Configuration via single YAML file at `/etc/app/config.yml` with schema validation on startup" |
-| "Fewer API calls than the old version" | "Dashboard load requires maximum 3 API calls: user profile, permissions, and recent activity" |
-| "Better error handling than before" | "All database operations wrapped in try/catch; connection failures trigger 3 retries with exponential backoff (1s, 2s, 4s) before surfacing error to user" |
-| "More flexible than the legacy system" | "Supports export to CSV, JSON, and Excel formats; user selects format via dropdown, default is CSV" |
+| --- | --- |
+| “Faster than the current implementation” | “Search queries must return within 200ms at p95 for datasets under 1M records” |
+| “More secure than what we have” | “Passwords: minimum 12 characters, at least one uppercase, one lowercase, one number; bcrypt hashing with cost factor 12” |
+| “Simpler than the existing approach” | “Configuration via single YAML file at `/etc/app/config.yml` with schema validation on startup” |
+| “Fewer API calls than the old version” | “Dashboard load requires maximum 3 API calls: user profile, permissions, and recent activity” |
+| “Better error handling than before” | “All database operations wrapped in try/catch; connection failures trigger 3 retries with exponential backoff (1s, 2s, 4s) before surfacing error to user” |
+| “More flexible than the legacy system” | “Supports export to CSV, JSON, and Excel formats; user selects format via dropdown, default is CSV” |
 
----
+* * *
 
-**WHY:** If someone reads any spec document in 2 years, they should understand
-it completely without reading git history, other docs, or the codebase.
+**WHY:** If someone reads any spec document in 2 years, they should understand it
+completely without reading git history, other docs, or the codebase.
 
----
+* * *
 
 ## Red Flags (Rewrite Immediately)
 
-- "The system SHALL return/include/store/cache..." (implementation language)
+- “The system SHALL return/include/store/cache...” (implementation language)
 - Technical acronyms without user context (WGS84, JWT, HTTP 429)
-- Requirement title ends in "-ing" (processing, caching, querying)
+- Requirement title ends in “-ing” (processing, caching, querying)
 - Rationale mentions database, cache, algorithm, or data structure
-- Time-dependent references: "as before", "previously", "maintain existing"
+- Time-dependent references: “as before”, “previously”, “maintain existing”
 
 ## Green Flags (Good Signs)
 
 - Title starts with user action verb (Discover, Show, Enable, View)
-- WHEN clause starts with "When a user..." or "When exploring..."
+- WHEN clause starts with “When a user …” or “When exploring …”
 - SHALL clause describes what user sees/experiences
 - Rationale uses: curiosity, discover, explore, understand, trust
 
----
+* * *
 
 ## Anti-Patterns to Avoid
 
@@ -396,8 +396,8 @@ THE SYSTEM SHALL update displayed activity within 500ms
 
 ### Orphaned Content in design.md (MOST CRITICAL)
 
-Content in design.md that cannot trace to a REQ-* in requirements.md is a
-violation. This is how specs become roadmaps for undefined work.
+Content in design.md that cannot trace to a REQ-* in requirements.md is a violation.
+This is how specs become roadmaps for undefined work.
 
 **Bad: Future considerations without requirements**
 
@@ -425,12 +425,13 @@ Quota display shows remaining requests...
 Components implementing REQ-RL-001 through REQ-RL-003...
 ```
 
-**The test:** Can you annotate every section of design.md with the REQ-* it
-supports? If not, that content belongs in an issue tracker.
+**The test:** Can you annotate every section of design.md with the REQ-* it supports?
+If not, that content belongs in an issue tracker.
 
 ### Wrong Document Location (ENFORCE STRICTLY)
 
-**This is a core principle. Violations corrupt the entire system.**
+**This is a core principle.
+Violations corrupt the entire system.**
 
 **NEVER: Status in requirements.md**
 
@@ -453,9 +454,11 @@ pub fn check(&self, ip: &str) -> Result<()>
 \`\`\`
 ```
 
-ZERO code blocks in executive.md. No exceptions. Not even one-liners.
+ZERO code blocks in executive.md.
+No exceptions. Not even one-liners.
 
-Note: Inline backticks ARE allowed. This is fine:
+Note: Inline backticks ARE allowed.
+This is fine:
 
 ```markdown
 ✅ ## Technical Summary
@@ -485,7 +488,8 @@ Requirements belong ONLY in requirements.md.
 
 ### Bad Requirement Titles (CRITICAL)
 
-Titles set the tone. Bad titles poison the whole requirement.
+Titles set the tone.
+Bad titles poison the whole requirement.
 
 **Bad: Implementation-focused titles**
 
@@ -509,7 +513,7 @@ Titles set the tone. Bad titles poison the whole requirement.
 ✅ REQ-XX-006: Secure User Sessions
 ```
 
----
+* * *
 
 ## Git Workflow
 
@@ -542,12 +546,12 @@ rg "^### REQ-" specs/feature-name/requirements.md
 rg "// REQ-" src/
 ```
 
----
+* * *
 
 ## Status Legend
 
 | Symbol | Meaning |
-|--------|---------|
+| --- | --- |
 | ✅ | Complete |
 | 🔄 | In Progress |
 | ⏭️ | Planned |
@@ -556,9 +560,9 @@ rg "// REQ-" src/
 | 🟡 | Functional with gaps |
 | N/A | Not applicable |
 
----
+* * *
 
-## DO / DON'T Summary
+## DO / DON’T Summary
 
 ### DO
 
@@ -570,9 +574,9 @@ rg "// REQ-" src/
 - Use git history for evolution tracking
 - Keep executive.md concise (no code blocks)
 
-### DON'T
+### DON’T
 
-- Write vague requirements ("fast", "good UX")
+- Write vague requirements ("fast", “good UX”)
 - Reuse requirement IDs
 - Add status to requirements.md
 - Include content in design.md without a corresponding REQ-*
@@ -583,22 +587,22 @@ rg "// REQ-" src/
 
 ### Unimplemented vs Undefined (Critical Distinction)
 
-**Unimplemented requirements** = REQ-* entries in requirements.md with ❌ status
-in executive.md. These are legitimate scope, just not built yet. Design.md CAN
-and SHOULD describe how to build them.
+**Unimplemented requirements** = REQ-* entries in requirements.md with ❌ status in
+executive.md. These are legitimate scope, just not built yet.
+Design.md CAN and SHOULD describe how to build them.
 
-**Undefined features** = Content describing capabilities without a corresponding
-REQ-* anywhere. This is scope creep. It belongs in an issue tracker, not the
-spec. This includes "Future Considerations" sections, "Phase 2" plans, or
-speculative extensibility.
+**Undefined features** = Content describing capabilities without a corresponding REQ-*
+anywhere. This is scope creep.
+It belongs in an issue tracker, not the spec.
+This includes “Future Considerations” sections, “Phase 2” plans, or speculative
+extensibility.
 
----
+* * *
 
 ## Reference
 
-For complete methodology details, examples, and FAQ, see
-[SPEARS.md](./SPEARS.md).
+For complete methodology details, examples, and FAQ, see [SPEARS.md](./SPEARS.md).
 
----
+* * *
 
 *spEARS: Simple Project with Easy Approach to Requirements Syntax*

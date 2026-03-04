@@ -2,7 +2,8 @@
 
 ## What Is This?
 
-A markdown-native task management library and CLI. Zero dependencies beyond Python stdlib.
+A markdown-native task management library and CLI. Zero dependencies beyond Python
+stdlib.
 
 ## Structure
 
@@ -33,14 +34,15 @@ This project uses itself for task management.
 - `pX`: Priority (p0 highest)
 - `status`: ready, in-progress, blocked, done, wont-do, brainstorming
 
-**To change status:** edit frontmatter `status:` field, then `taskmd fix`.
-Never rename task files directly.
+**To change status:** edit frontmatter `status:` field, then `taskmd fix`. Never rename
+task files directly.
 
-**To create a new task:** `taskmd next` prints the next number. Create the file.
+**To create a new task:** `taskmd next` prints the next number.
+Create the file.
 
 ## Code Conventions
 
 - Single module (`core.py`) contains all logic
 - Every public function takes `tasks_dir: Path | str` and returns a dataclass
-- No printing, no sys.exit in `core.py` — that's `cli.py`'s job
+- No printing, no sys.exit in `core.py` — that’s `cli.py`’s job
 - Tests use `tmp_path` fixtures with real task files on disk
