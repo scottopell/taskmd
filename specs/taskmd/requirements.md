@@ -49,7 +49,7 @@ its own git history.
 
 ### REQ-TM-002: Query Tasks by Status and Priority
 
-THE SYSTEM SHALL enforce the filename format: `NNNN-pX-status-slug.md`
+THE SYSTEM SHALL enforce the filename format: `NNNN-pX-status--slug.md`
 
 WHERE `NNNN` is a zero-padded 4-digit task number (0001 through 9999)
 AND `pX` is a priority level (p0 highest through p4 lowest)

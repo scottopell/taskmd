@@ -10,10 +10,10 @@ standard library. The filesystem IS the database; git IS the audit trail.
 project/
   tasks/
     _TEMPLATE.md
-    0001-p1-done-initial-setup.md
-    0002-p2-ready-add-feature.md
-    0002-p2-ready-add-feature.qaplan.md
-    0003-p3-blocked-waiting-on-api.md
+    0001-p1-done--initial-setup.md
+    0002-p2-ready--add-feature.md
+    0002-p2-ready--add-feature.qaplan.md
+    0003-p3-blocked--waiting-on-api.md
   taskmd.py
 ```
 
@@ -24,7 +24,7 @@ project/
 A task is a markdown file whose identity is encoded in its filename:
 
 ```
-NNNN-pX-status-slug.md
+NNNN-pX-status--slug.md
  |    |    |      |
  |    |    |      +-- kebab-case description
  |    |    +--------- lifecycle state (6 values)
@@ -52,7 +52,7 @@ FILENAME_PATTERN = r"^(\d{4})-(p[0-4])-(ready|in-progress|blocked|done|wont-do|b
 
 ### Ancillary Files (REQ-TM-008)
 
-Pattern: `NNNN-pX-status-slug.{qaplan,qareport}.md`
+Pattern: `NNNN-pX-status--slug.{qaplan,qareport}.md`
 
 Associated with a task by sharing the same number prefix. Skipped during validation
 and fix. Detection rule: any `.md` file whose stem contains a second dot segment
@@ -68,13 +68,6 @@ and fix. Detection rule: any `.md` file whose stem contains a second dot segment
 | `done` | Complete |
 | `wont-do` | Decided not to implement |
 | `brainstorming` | Early exploration, not yet actionable |
-
-### Migration from 3-digit numbers
-
-Projects migrating from an older 3-digit convention (`NNN-pX-status-slug.md`) can
-use `taskmd fix` to rename files. The parser accepts both 3 and 4 digit numbers on
-input (for backwards compatibility), but `fix` always writes 4-digit filenames.
-New tasks always use 4 digits.
 
 ## CLI Commands
 

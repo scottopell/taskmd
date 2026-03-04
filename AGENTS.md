@@ -27,7 +27,7 @@ python -m pytest tests/       # Run tests
 
 This project uses itself for task management.
 
-**Format:** `NNNN-pX-status-slug.md` (e.g., `0042-p1-ready-fix-bug.md`)
+**Format:** `NNNN-pX-status--slug.md` (e.g., `0042-p1-ready--fix-bug.md`)
 
 - `NNNN`: 4-digit task number
 - `pX`: Priority (p0 highest)

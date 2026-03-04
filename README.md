@@ -7,9 +7,9 @@ No database, no config file — the filesystem is the data store, git is the aud
 
 ```
 tasks/
-  0001-p1-done-initial-setup.md
-  0002-p2-ready-add-feature.md
-  0003-p3-blocked-waiting-on-api.md
+  0001-p1-done--initial-setup.md
+  0002-p2-ready--add-feature.md
+  0003-p3-blocked--waiting-on-api.md
 ```
 
 ## Install
@@ -60,7 +60,7 @@ if not result.ok:
 
 ## Task file format
 
-Filename: `NNNN-pX-status-slug.md`
+Filename: `NNNN-pX-status--slug.md`
 
 ```yaml
 ---

@@ -29,11 +29,12 @@ VALID_STATUSES = frozenset({
 
 VALID_PRIORITIES = frozenset({"p0", "p1", "p2", "p3", "p4"})
 
-# 3 or 4 digit number for backwards compat on parse; fix always writes 4.
+# Double-dash separates status from slug for visual clarity:
+#   0042-p2-ready--fix-the-bug.md
 _FILENAME_RE = re.compile(
-    r"^(\d{3,4})-(p[0-4])-("
+    r"^(\d{4})-(p[0-4])-("
     + "|".join(sorted(VALID_STATUSES))
-    + r")-(.+)\.md$"
+    + r")--(.+)\.md$"
 )
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -89,7 +90,7 @@ def _is_template(path: Path) -> bool:
 
 
 def _is_ancillary(path: Path) -> bool:
-    """Ancillary files have a second dot segment: NNN-pX-status-slug.qaplan.md"""
+    """Ancillary files have a second dot segment: 0042-p2-ready--foo.qaplan.md"""
     stem = path.stem  # e.g., "0042-p2-ready-foo.qaplan"
     return "." in stem
 
@@ -161,8 +162,8 @@ def _parse_frontmatter(path: Path) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def get_expected_filename(number: int, priority: str, status: str, slug: str) -> str:
-    """Generate the canonical filename for a task. Always 4-digit."""
-    return f"{number:04d}-{priority}-{status}-{slug}.md"
+    """Generate the canonical filename for a task. Always 4-digit, double-dash before slug."""
+    return f"{number:04d}-{priority}-{status}--{slug}.md"
 
 
 # ---------------------------------------------------------------------------
