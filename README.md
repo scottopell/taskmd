@@ -17,9 +17,11 @@ tasks/
 ## Install
 
 ```bash
-uv pip install taskmd
-# or
-pip install taskmd
+# From GitHub
+uv pip install git+https://github.com/scottopell/taskmd.git
+
+# Or with pip
+pip install git+https://github.com/scottopell/taskmd.git
 ```
 
 ## CLI
@@ -50,7 +52,7 @@ print(f"Next task: {n:04d}")
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["taskmd"]
+# dependencies = ["taskmd @ git+https://github.com/scottopell/taskmd.git"]
 # ///
 
 from taskmd import validate
