@@ -58,7 +58,11 @@ class TaskFile:
 
 @dataclass
 class ValidationResult:
-    """Result of validating a tasks directory."""
+    """Result of validating a tasks directory.
+
+    ``file_count`` is the total number of task files examined — including
+    files that failed validation, not just the ones that passed.
+    """
 
     errors: list[str] = field(default_factory=list)
     file_count: int = 0
@@ -74,11 +78,28 @@ class FixResult:
 
     patched: int = 0
     renamed: int = 0
+    renames: list[tuple[str, str]] = field(default_factory=list)
+    """Per-file rename details: list of (old_filename, new_filename) pairs."""
     errors: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
         return len(self.errors) == 0
+
+    def summary(self) -> str:
+        """Human-readable summary of what changed.
+
+        Returns e.g. "Patched 2 file(s), renamed 3 file(s)" or
+        "All files already correct".
+        """
+        if not self.patched and not self.renamed:
+            return "All files already correct"
+        parts = []
+        if self.patched:
+            parts.append(f"patched {self.patched} file(s)")
+        if self.renamed:
+            parts.append(f"renamed {self.renamed} file(s)")
+        return ", ".join(parts).capitalize()
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +330,7 @@ def fix(tasks_dir: Path | str = "tasks") -> FixResult:
                 result.errors.append(f"{path.name}: cannot rename to {expected}, file exists")
                 continue
 
+            result.renames.append((path.name, expected))
             path.rename(new_path)
             result.renamed += 1
 

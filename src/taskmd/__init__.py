@@ -14,6 +14,9 @@ CLI interface:
 from taskmd.core import (
     VALID_PRIORITIES,
     VALID_STATUSES,
+    FixResult,
+    TaskFile,
+    ValidationResult,
     fix,
     get_expected_filename,
     next_number,
@@ -29,4 +32,7 @@ __all__ = [
     "get_expected_filename",
     "VALID_STATUSES",
     "VALID_PRIORITIES",
+    "ValidationResult",
+    "FixResult",
+    "TaskFile",
 ]

@@ -529,8 +529,9 @@ def test_frontmatter_key_preservation_with_colon_values(
         path.write_text(fm, encoding="utf-8")
         task = parse_task_file(path)
         assert task is not None
-        assert task.fields.get(extra_key) == extra_value, (
-            f"Key {extra_key!r} value corrupted: expected {extra_value!r}, "
+        # Frontmatter parsing strips whitespace from values, so compare stripped
+        assert task.fields.get(extra_key) == extra_value.strip(), (
+            f"Key {extra_key!r} value corrupted: expected {extra_value.strip()!r}, "
             f"got {task.fields.get(extra_key)!r}"
         )
 

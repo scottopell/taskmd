@@ -51,15 +51,10 @@ def main(argv: list[str] | None = None) -> None:
             for err in result.errors:
                 print(f"  - {err}")
             sys.exit(1)
-        elif result.patched or result.renamed:
-            parts = []
-            if result.patched:
-                parts.append(f"patched {result.patched} file(s)")
-            if result.renamed:
-                parts.append(f"renamed {result.renamed} file(s)")
-            print(f"✓ {', '.join(parts).capitalize()}")
         else:
-            print("✓ All files already correct")
+            for old, new in result.renames:
+                print(f"  {old} -> {new}")
+            print(f"✓ {result.summary()}")
 
     elif command == "next":
         n = next_number(tasks_dir)
