@@ -78,6 +78,8 @@ class FixResult:
 
     patched: int = 0
     renamed: int = 0
+    patches: list[tuple[str, str]] = field(default_factory=list)
+    """Per-file patch details: list of (filename, inferred_date) pairs."""
     renames: list[tuple[str, str]] = field(default_factory=list)
     """Per-file rename details: list of (old_filename, new_filename) pairs."""
     errors: list[str] = field(default_factory=list)
@@ -123,6 +125,29 @@ def _task_files(tasks_dir: Path) -> list[Path]:
         for p in tasks_dir.glob("*.md")
         if not _is_template(p) and not _is_ancillary(p)
     )
+
+
+# ---------------------------------------------------------------------------
+# Listing (REQ-TM-001)
+# ---------------------------------------------------------------------------
+
+def list_tasks(tasks_dir: Path | str = "tasks") -> list[TaskFile]:
+    """Return all parseable task files in a directory, sorted by number.
+
+    Skips template and ancillary files. Files whose names don't match the
+    expected pattern are silently skipped (use ``validate`` to find those).
+    """
+    tasks_dir = Path(tasks_dir)
+    if not tasks_dir.exists():
+        return []
+
+    result: list[TaskFile] = []
+    for path in _task_files(tasks_dir):
+        task = parse_task_file(path)
+        if task is not None:
+            result.append(task)
+
+    return sorted(result, key=lambda t: t.number)
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +338,7 @@ def fix(tasks_dir: Path | str = "tasks") -> FixResult:
 
             path.write_text(content, encoding="utf-8")
             fields["created"] = created
+            result.patches.append((path.name, created))
             result.patched += 1
 
         # Rename to match frontmatter
