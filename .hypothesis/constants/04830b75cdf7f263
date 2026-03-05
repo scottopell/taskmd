@@ -1,4 +1,0 @@
-# file: /Users/scott.opell/dev/taskmd/src/taskmd/__init__.py
-# hypothesis_version: 6.151.9
-
-['VALID_PRIORITIES', 'VALID_STATUSES', 'fix', 'next_number', 'parse_task_file', 'validate']

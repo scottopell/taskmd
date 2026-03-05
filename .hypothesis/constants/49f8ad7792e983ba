@@ -1,4 +1,0 @@
-# file: /Users/scott.opell/dev/taskmd/src/taskmd/core.py
-# hypothesis_version: 6.151.9
-
-['\n---\n', ')--(.+)\\.md$', '*.md', ', ', '---\n', '--diff-filter=A', '--follow', '--format=%as', '.', ':', '^(\\d{4})-(p[0-4])-(', '^\\d{4}-\\d{2}-\\d{2}$', '^created:.*$', '_TEMPLATE.md', 'blocked', 'brainstorming', 'created', 'done', 'git', 'in-progress', 'log', 'p0', 'p1', 'p2', 'p3', 'p4', 'priority', 'ready', 'status', 'tasks', 'utf-8', 'wont-do', '|']

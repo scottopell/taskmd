@@ -13,6 +13,17 @@ from pathlib import Path
 
 from taskmd.core import fix, next_number, validate
 
+_DEFAULT_DIRS = ("tasks", "tasksmd")
+
+
+def _resolve_tasks_dir() -> Path:
+    """Return the first existing candidate directory, or 'tasks' as fallback."""
+    for name in _DEFAULT_DIRS:
+        p = Path(name)
+        if p.is_dir():
+            return p
+    return Path(_DEFAULT_DIRS[0])
+
 
 def main(argv: list[str] | None = None) -> None:
     args = argv if argv is not None else sys.argv[1:]
@@ -26,11 +37,11 @@ def main(argv: list[str] | None = None) -> None:
         print("  next       Print the next available task number")
         print()
         print("Arguments:")
-        print("  tasks_dir  Path to tasks directory (default: ./tasks)")
+        print("  tasks_dir  Path to tasks directory (default: ./tasks or ./tasksmd)")
         sys.exit(0)
 
     command = args[0]
-    tasks_dir = Path(args[1]) if len(args) > 1 else Path("tasks")
+    tasks_dir = Path(args[1]) if len(args) > 1 else _resolve_tasks_dir()
 
     if command == "validate":
         result = validate(tasks_dir)
