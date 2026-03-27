@@ -268,6 +268,11 @@ def validate(tasks_dir: Path | str = "tasks") -> ValidationResult:
         elif not _DATE_RE.match(fields["created"]):
             result.errors.append(f"{path.name}: invalid 'created' date format (expected YYYY-MM-DD)")
 
+        if "artifact" not in fields:
+            result.errors.append(f"{path.name}: missing 'artifact' field (what file or system change does this task produce?)")
+        elif not fields["artifact"]:
+            result.errors.append(f"{path.name}: 'artifact' field is empty (must name a concrete output, e.g. a file path, config change, or commit)")
+
         # Filename matches frontmatter
         task = parse_task_file(path)
         if task and fields.get("status") and fields.get("priority"):

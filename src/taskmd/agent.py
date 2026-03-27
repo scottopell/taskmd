@@ -137,6 +137,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
                 "created": {"required": True, "format": "YYYY-MM-DD"},
                 "priority": {"required": True, "values": sorted(VALID_PRIORITIES)},
                 "status": {"required": True, "values": sorted(VALID_STATUSES)},
+                "artifact": {"required": True, "description": "The concrete output this task produces (file path, config change, commit, etc.). If you cannot name one, the task probably should not exist."},
             },
         },
         "valid_statuses": sorted(VALID_STATUSES),
@@ -150,8 +151,8 @@ def schema(compact: bool = False) -> dict[str, Any]:
                 "steps": [
                     "taskmd next  # get next number, e.g. 0042",
                     "Create file: tasks/0042-p2-ready--short-slug.md",
-                    "Add frontmatter: created, priority, status",
-                    "Write task body with Summary and Acceptance Criteria",
+                    "Add frontmatter: created, priority, status, artifact",
+                    "Write task body with Summary and Done When sections",
                     "taskmd validate  # confirm it's valid",
                 ],
             },
@@ -176,6 +177,8 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "Don't use task number 0000 -- numbers start at 0001",
             "Don't omit the double-dash before the slug -- it's 'status--slug', not 'status-slug'",
             "Don't put spaces in slugs -- use hyphens: 'fix-the-bug' not 'fix the bug'",
+            "Don't create tasks for work you can do right now. A task tracks work blocked by something: user input, a different environment, passage of time, or an unmade decision. If nothing prevents you from doing it immediately, it's an action -- just do it.",
+            "Don't create tasks that describe transient system states with no durable artifact. If you can't fill in the artifact: field honestly, the task should not exist.",
         ]
         s["best_practices"] = [
             "Run 'taskmd validate' after creating or editing task files",
@@ -183,6 +186,8 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "Use 'taskmd list --status ready' to find work that needs to be done",
             "Keep slugs short and descriptive (3-5 words)",
             "One concern per task file -- split large tasks into subtasks",
+            "Before creating a task, ask: what blocks me from doing this now? If the answer is nothing, it's an action, not a task -- just do it.",
+            "The artifact: field should name what this task produces or changes when done (a file, a config, a commit). If you struggle to fill it in, reconsider whether the task should exist.",
         ]
 
     return s

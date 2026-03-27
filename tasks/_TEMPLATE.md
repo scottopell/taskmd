@@ -2,6 +2,7 @@
 created: YYYY-MM-DD
 priority: p2
 status: ready
+artifact: path/to/file-or-system-change
 ---
 # Task Title
 
@@ -13,7 +14,7 @@ Brief description of what needs to be done.
 
 Why this task exists, any relevant background.
 
-## Acceptance Criteria
+## Done When
 
 - [ ] Criterion 1
 - [ ] Criterion 2

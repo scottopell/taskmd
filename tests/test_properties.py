@@ -61,7 +61,7 @@ def _write_task_file(tasks_dir: Path, number: int, priority: str, status: str, s
     """Write a valid task file to tasks_dir and return its path."""
     filename = get_expected_filename(number, priority, status, slug)
     path = tasks_dir / filename
-    fm = f"---\ncreated: 2026-01-01\npriority: {priority}\nstatus: {status}\n---\n\n# Task {number}\n"
+    fm = f"---\ncreated: 2026-01-01\npriority: {priority}\nstatus: {status}\nartifact: src/{slug}.py\n---\n\n# Task {number}\n"
     path.write_text(fm, encoding="utf-8")
     return path
 

@@ -84,6 +84,7 @@ Filename: `NNNN-pX-status--slug.md`
 created: 2026-03-04
 priority: p2
 status: ready
+artifact: src/feature.py
 ---
 
 # Task Title
@@ -91,7 +92,7 @@ status: ready
 ## Summary
 What needs to be done.
 
-## Acceptance Criteria
+## Done When
 - [ ] First criterion
 - [ ] Second criterion
 ```
@@ -99,6 +100,8 @@ What needs to be done.
 **Statuses:** ready, in-progress, blocked, done, wont-do, brainstorming
 
 **Priorities:** p0 (critical) through p4 (polish)
+
+**Artifact:** the concrete output this task produces (file path, config change, commit). Required.
 
 **To change status:** edit the `status:` field in frontmatter, then `taskmd fix`.
 

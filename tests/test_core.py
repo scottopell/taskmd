@@ -26,7 +26,7 @@ from taskmd.core import (
 
 def make_task(tasks_dir: Path, number: int, priority: str, status: str, slug: str, **extra_fields) -> Path:
     """Create a valid task file on disk."""
-    fields = {"created": "2026-03-04", "priority": priority, "status": status}
+    fields = {"created": "2026-03-04", "priority": priority, "status": status, "artifact": f"src/{slug}.py"}
     fields.update(extra_fields)
     fm = "\n".join(f"{k}: {v}" for k, v in fields.items())
     filename = get_expected_filename(number, priority, status, slug)
