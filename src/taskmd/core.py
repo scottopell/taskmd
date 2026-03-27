@@ -39,6 +39,8 @@ _FILENAME_RE = re.compile(
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+VALID_FIELDS = frozenset({"created", "priority", "status", "artifact"})
+
 
 # ---------------------------------------------------------------------------
 # Data types
@@ -272,6 +274,13 @@ def validate(tasks_dir: Path | str = "tasks") -> ValidationResult:
             result.errors.append(f"{path.name}: missing 'artifact' field (what file or system change does this task produce?)")
         elif not fields["artifact"]:
             result.errors.append(f"{path.name}: 'artifact' field is empty (must name a concrete output, e.g. a file path, config change, or commit)")
+
+        unknown = sorted(set(fields) - VALID_FIELDS)
+        if unknown:
+            result.errors.append(
+                f"{path.name}: unknown field(s): {', '.join(unknown)} "
+                f"(valid: {', '.join(sorted(VALID_FIELDS))})"
+            )
 
         # Filename matches frontmatter
         task = parse_task_file(path)

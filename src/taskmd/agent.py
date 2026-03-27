@@ -10,7 +10,7 @@ import json
 import os
 from typing import Any
 
-from taskmd.core import VALID_PRIORITIES, VALID_STATUSES
+from taskmd.core import VALID_FIELDS, VALID_PRIORITIES, VALID_STATUSES
 
 # ---------------------------------------------------------------------------
 # Agent detection
@@ -142,6 +142,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
         },
         "valid_statuses": sorted(VALID_STATUSES),
         "valid_priorities": sorted(VALID_PRIORITIES),
+        "valid_fields": sorted(VALID_FIELDS),
     }
 
     if not compact:
@@ -179,6 +180,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "Don't put spaces in slugs -- use hyphens: 'fix-the-bug' not 'fix the bug'",
             "Don't create tasks for work you can do right now. A task tracks work blocked by something: user input, a different environment, passage of time, or an unmade decision. If nothing prevents you from doing it immediately, it's an action -- just do it.",
             "Don't create tasks that describe transient system states with no durable artifact. If you can't fill in the artifact: field honestly, the task should not exist.",
+            "Don't add extra fields to frontmatter (e.g. result:, notes:, assignee:). Only the valid fields are allowed: " + ", ".join(sorted(VALID_FIELDS)) + ". Put everything else in the markdown body.",
         ]
         s["best_practices"] = [
             "Run 'taskmd validate' after creating or editing task files",
