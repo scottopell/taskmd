@@ -10,9 +10,7 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 from taskmd.agent import (
