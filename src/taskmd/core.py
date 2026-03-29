@@ -8,6 +8,7 @@ structured results. No global state, no printing, no sys.exit.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -30,10 +31,13 @@ VALID_STATUSES = frozenset({
 
 VALID_PRIORITIES = frozenset({"p0", "p1", "p2", "p3", "p4"})
 
-# Double-dash separates status from slug for visual clarity:
-#   0042-p2-ready--fix-the-bug.md
+# Task ID formats:
+#   New:    AANNN  (2 chars from _ID_ALPHABET + 3 digits)  e.g. AB042-p2-ready--fix-the-bug.md
+#   Legacy: NNNN   (4 digits)                               e.g. 0042-p2-ready--fix-the-bug.md
+# The alternation tries 5-char new format first; 4-char legacy is the fallback.
+# Note: I and O are excluded from the alphabet (ambiguous with 1 and 0).
 _FILENAME_RE = re.compile(
-    r"^(\d{4})-(p[0-4])-("
+    r"^([A-HJ-NP-Z0-9]{2}\d{3}|\d{4})-(p[0-4])-("
     + "|".join(sorted(VALID_STATUSES))
     + r")--(.+)\.md$"
 )
@@ -41,6 +45,31 @@ _FILENAME_RE = re.compile(
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 VALID_FIELDS = frozenset({"created", "priority", "status", "artifact"})
+
+_ID_ALPHABET = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"  # no I or O (ambiguous with 1 and 0)
+_ID_BASE = len(_ID_ALPHABET)  # 34
+
+
+def _prefix_for(tasks_dir: Path) -> str:
+    """Derive a deterministic 2-char prefix from the tasks dir realpath."""
+    h = hashlib.sha256(str(tasks_dir.resolve()).encode()).digest()
+    val = int.from_bytes(h[:2], "big") % (_ID_BASE * _ID_BASE)
+    return _ID_ALPHABET[val // _ID_BASE] + _ID_ALPHABET[val % _ID_BASE]
+
+
+def _parse_id_parts(task_id: str) -> tuple[str, int]:
+    """Decompose a task ID into (prefix, sequence_number).
+
+    New format "AB042" -> ("AB", 42). Legacy "0042" -> ("", 42).
+    """
+    if _is_legacy_id(task_id):
+        return ("", int(task_id))
+    return (task_id[:2], int(task_id[2:]))
+
+
+def _is_legacy_id(task_id: str) -> bool:
+    """True if task_id is the old 4-digit numeric format."""
+    return len(task_id) == 4 and task_id.isdigit()
 
 _TEMPLATE_CONTENT = dedent("""\
     ---
@@ -69,7 +98,7 @@ class TaskFile:
     """Parsed representation of a task file."""
 
     path: Path
-    number: int
+    id: str  # opaque task ID (e.g. "AB042" or legacy "0042")
     priority: str
     status: str
     slug: str
@@ -98,6 +127,7 @@ class FixResult:
 
     patched: int = 0
     renamed: int = 0
+    migrated: int = 0
     patches: list[tuple[str, str]] = field(default_factory=list)
     """Per-file patch details: list of (filename, inferred_date) pairs."""
     renames: list[tuple[str, str]] = field(default_factory=list)
@@ -121,6 +151,8 @@ class FixResult:
             parts.append(f"patched {self.patched} file(s)")
         if self.renamed:
             parts.append(f"renamed {self.renamed} file(s)")
+        if self.migrated:
+            parts.append(f"migrated {self.migrated} file(s) to AANNN format")
         return ", ".join(parts).capitalize()
 
 
@@ -168,7 +200,7 @@ def _task_files(tasks_dir: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 def list_tasks(tasks_dir: Path | str = "tasks") -> list[TaskFile]:
-    """Return all parseable task files in a directory, sorted by number.
+    """Return all parseable task files in a directory, sorted by ID.
 
     Skips template and ancillary files. Files whose names don't match the
     expected pattern are silently skipped (use ``validate`` to find those).
@@ -183,7 +215,7 @@ def list_tasks(tasks_dir: Path | str = "tasks") -> list[TaskFile]:
         if task is not None:
             result.append(task)
 
-    return sorted(result, key=lambda t: t.number)
+    return sorted(result, key=lambda t: t.id)
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +231,7 @@ def parse_task_file(path: Path) -> TaskFile | None:
     if not m:
         return None
 
-    number = int(m.group(1))
+    task_id = m.group(1)
     priority = m.group(2)
     status = m.group(3)
     slug = m.group(4)
@@ -208,7 +240,7 @@ def parse_task_file(path: Path) -> TaskFile | None:
 
     return TaskFile(
         path=path,
-        number=number,
+        id=task_id,
         priority=priority,
         status=status,
         slug=slug,
@@ -243,9 +275,9 @@ def _parse_frontmatter(path: Path) -> dict[str, str]:
 # Filename generation (REQ-TM-002)
 # ---------------------------------------------------------------------------
 
-def get_expected_filename(number: int, priority: str, status: str, slug: str) -> str:
-    """Generate the canonical filename for a task. Always 4-digit, double-dash before slug."""
-    return f"{number:04d}-{priority}-{status}--{slug}.md"
+def get_expected_filename(task_id: str, priority: str, status: str, slug: str) -> str:
+    """Generate the canonical filename for a task. Double-dash before slug."""
+    return f"{task_id}-{priority}-{status}--{slug}.md"
 
 
 # ---------------------------------------------------------------------------
@@ -320,24 +352,24 @@ def validate(tasks_dir: Path | str = "tasks") -> ValidationResult:
         task = parse_task_file(path)
         if task and fields.get("status") and fields.get("priority"):
             expected = get_expected_filename(
-                task.number, fields["priority"], fields["status"], task.slug
+                task.id, fields["priority"], fields["status"], task.slug
             )
             if path.name != expected:
                 result.errors.append(
                     f"{path.name}: filename doesn't match frontmatter, expected: {expected}"
                 )
 
-    # Duplicate task numbers
-    number_map: dict[int, list[str]] = {}
+    # Duplicate task IDs
+    id_map: dict[str, list[str]] = {}
     for path in files:
         task = parse_task_file(path)
         if task:
-            number_map.setdefault(task.number, []).append(path.name)
+            id_map.setdefault(task.id, []).append(path.name)
 
-    for num, filenames in sorted(number_map.items()):
+    for tid, filenames in sorted(id_map.items()):
         if len(filenames) > 1:
             result.errors.append(
-                f"duplicate task number {num}: {', '.join(filenames)}"
+                f"duplicate task id {tid}: {', '.join(filenames)}"
             )
 
     return result
@@ -350,6 +382,7 @@ def validate(tasks_dir: Path | str = "tasks") -> ValidationResult:
 def fix(tasks_dir: Path | str = "tasks") -> FixResult:
     """Auto-fix task files: inject missing 'created', rename to match frontmatter.
 
+    Also migrates legacy 4-digit (NNNN) filenames to the new AANNN format.
     Returns a FixResult with counts and any errors.
     """
     tasks_dir = Path(tasks_dir)
@@ -359,6 +392,7 @@ def fix(tasks_dir: Path | str = "tasks") -> FixResult:
         return result
 
     files = _task_files(tasks_dir)
+    prefix = _prefix_for(tasks_dir)
 
     for path in files:
         task = parse_task_file(path)
@@ -394,8 +428,21 @@ def fix(tasks_dir: Path | str = "tasks") -> FixResult:
             result.errors.append(f"{path.name}: missing status or priority in frontmatter")
             continue
 
+        # Migrate legacy NNNN -> AANNN
+        task_id = task.id
+        if _is_legacy_id(task_id):
+            _, seq = _parse_id_parts(task_id)
+            if seq > 999:
+                result.errors.append(
+                    f"{path.name}: legacy task number {seq} exceeds 999, "
+                    "cannot migrate to 3-digit format"
+                )
+                continue
+            task_id = prefix + f"{seq:03d}"
+            result.migrated += 1
+
         expected = get_expected_filename(
-            task.number, fields["priority"], fields["status"], task.slug
+            task_id, fields["priority"], fields["status"], task.slug
         )
 
         if path.name != expected:
@@ -412,26 +459,31 @@ def fix(tasks_dir: Path | str = "tasks") -> FixResult:
 
 
 # ---------------------------------------------------------------------------
-# Next number (REQ-TM-006)
+# Next ID (REQ-TM-006)
 # ---------------------------------------------------------------------------
 
-def next_number(tasks_dir: Path | str = "tasks") -> int:
-    """Return the next available task number (max existing + 1)."""
+def next_id(tasks_dir: Path | str = "tasks") -> str:
+    """Return the next available task ID for this tasks directory.
+
+    The ID prefix is derived from the directory's realpath, so different
+    worktrees get different prefixes and won't conflict.
+    """
     tasks_dir = Path(tasks_dir)
+    prefix = _prefix_for(tasks_dir)
 
     if not tasks_dir.exists():
-        return 1
+        return prefix + "001"
 
-    numbers: list[int] = []
+    max_seq = 0
     for path in _task_files(tasks_dir):
         task = parse_task_file(path)
         if task:
-            numbers.append(task.number)
+            pfx, seq = _parse_id_parts(task.id)
+            # Count legacy files (will be migrated to this prefix) and same-prefix files
+            if pfx == prefix or pfx == "":
+                max_seq = max(max_seq, seq)
 
-    if not numbers:
-        return 1
-
-    return max(numbers) + 1
+    return prefix + f"{max_seq + 1:03d}"
 
 
 # ---------------------------------------------------------------------------

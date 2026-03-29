@@ -25,7 +25,7 @@ from taskmd.core import (
     fix,
     init,
     list_tasks,
-    next_number,
+    next_id,
     validate,
 )
 
@@ -37,8 +37,8 @@ Usage: taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
 Commands:
   init       Create a new tasks directory with a template file
   validate   Check all task files for consistency
-  fix        Auto-repair fixable issues (missing dates, mismatched filenames)
-  next       Print the next available task number
+  fix        Auto-repair fixable issues (missing dates, mismatched filenames, legacy naming)
+  next       Print the next available task ID
   list       List all task files with metadata
 
 Options:
@@ -128,7 +128,7 @@ def _use_json(opts: dict) -> bool:
 def _task_to_dict(task) -> dict:
     """Convert a TaskFile to a JSON-friendly dict."""
     return {
-        "number": task.number,
+        "id": task.id,
         "priority": task.priority,
         "status": task.status,
         "slug": task.slug,
@@ -223,11 +223,13 @@ def main(argv: list[str] | None = None) -> None:
                     {
                         "patched": result.patched,
                         "renamed": result.renamed,
+                        "migrated": result.migrated,
                         "patches": [{"file": f, "date": d} for f, d in result.patches],
                         "renames": [{"old": o, "new": n} for o, n in result.renames],
                     },
                     patched=result.patched,
                     renamed=result.renamed,
+                    migrated=result.migrated,
                 ))
         else:
             if result.errors:
@@ -238,14 +240,16 @@ def main(argv: list[str] | None = None) -> None:
             else:
                 for old, new in result.renames:
                     print(f"  {old} -> {new}")
+                if result.migrated:
+                    print(f"  Note: {result.migrated} file(s) migrated from legacy NNNN to AANNN naming")
                 print(f"\u2713 {result.summary()}")
 
     elif command == "next":
-        n = next_number(tasks_dir)
+        n = next_id(tasks_dir)
         if use_json:
-            print(success_envelope("next", {"next_number": n}))
+            print(success_envelope("next", {"next_id": n}))
         else:
-            print(f"{n:04d}")
+            print(n)
 
     elif command == "list":
         tasks = list_tasks(tasks_dir)
@@ -280,7 +284,7 @@ def main(argv: list[str] | None = None) -> None:
                 print("No tasks found.")
             else:
                 for t in tasks:
-                    print(f"{t.number:04d}  {t.priority}  {t.status:14s}  {t.slug}")
+                    print(f"{t.id:5s}  {t.priority}  {t.status:14s}  {t.slug}")
 
     else:
         msg = f"Unknown command: {command}"

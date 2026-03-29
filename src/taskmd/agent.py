@@ -106,14 +106,14 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "output": "ValidationResult with errors[] and file_count",
         },
         "fix": {
-            "description": "Auto-repair fixable issues (missing dates, mismatched filenames)",
+            "description": "Auto-repair fixable issues (missing dates, mismatched filenames, legacy NNNN naming)",
             "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
-            "output": "FixResult with patches[], renames[], errors[]",
+            "output": "FixResult with patches[], renames[], migrated count, errors[]",
         },
         "next": {
-            "description": "Print the next available task number",
+            "description": "Print the next available task ID (prefix derived from directory path)",
             "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
-            "output": "Integer (4-digit zero-padded in text mode)",
+            "output": "Task ID string (5-character AANNN format)",
         },
         "list": {
             "description": "List all task files with metadata",
@@ -136,8 +136,9 @@ def schema(compact: bool = False) -> dict[str, Any]:
         },
         "commands": commands,
         "task_format": {
-            "filename_pattern": "NNNN-pX-status--slug.md",
-            "example": "0042-p2-ready--fix-the-bug.md",
+            "filename_pattern": "AANNN-pX-status--slug.md",
+            "id_format": "AA = 2 base-36 chars derived from tasks dir path, NNN = 3-digit sequence",
+            "example": "AB042-p2-ready--fix-the-bug.md",
             "frontmatter_fields": {
                 "created": {"required": True, "format": "YYYY-MM-DD"},
                 "priority": {"required": True, "values": sorted(VALID_PRIORITIES)},
@@ -162,8 +163,8 @@ def schema(compact: bool = False) -> dict[str, Any]:
             {
                 "name": "Create a new task",
                 "steps": [
-                    "taskmd next  # get next number, e.g. 0042",
-                    "Create file: tasks/0042-p2-ready--short-slug.md",
+                    "taskmd next  # get next ID, e.g. AB042",
+                    "Create file: tasks/AB042-p2-ready--short-slug.md",
                     "Add frontmatter: created, priority, status, artifact",
                     "Write task body with Summary and Done When sections",
                     "taskmd validate  # confirm it's valid",
@@ -187,7 +188,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
         ]
         s["anti_patterns"] = [
             "Don't rename task files directly -- edit frontmatter and run 'taskmd fix'",
-            "Don't use task number 0000 -- numbers start at 0001",
+            "Don't use sequence 000 in task IDs -- sequences start at 001",
             "Don't omit the double-dash before the slug -- it's 'status--slug', not 'status-slug'",
             "Don't put spaces in slugs -- use hyphens: 'fix-the-bug' not 'fix the bug'",
             "Don't create tasks for work you can do right now. A task tracks work blocked by something: user input, a different environment, passage of time, or an unmade decision. If nothing prevents you from doing it immediately, it's an action -- just do it.",

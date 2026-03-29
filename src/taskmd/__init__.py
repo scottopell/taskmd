@@ -2,7 +2,7 @@
 
 Library interface:
 
-    from taskmd import validate, fix, next_number, parse_task_file
+    from taskmd import validate, fix, next_id, parse_task_file
 
 CLI interface:
 
@@ -21,7 +21,7 @@ from taskmd.core import (
     fix,
     get_expected_filename,
     list_tasks,
-    next_number,
+    next_id,
     parse_task_file,
     validate,
 )
@@ -29,7 +29,7 @@ from taskmd.core import (
 __all__ = [
     "validate",
     "fix",
-    "next_number",
+    "next_id",
     "list_tasks",
     "parse_task_file",
     "get_expected_filename",
