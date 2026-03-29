@@ -9,11 +9,13 @@ from pathlib import Path
 import pytest
 
 from taskmd.core import (
+    VALID_FIELDS,
     VALID_PRIORITIES,
     VALID_STATUSES,
     ValidationResult,
     fix,
     get_expected_filename,
+    init,
     next_number,
     parse_task_file,
     validate,
@@ -263,3 +265,48 @@ class TestNextNumber:
         make_task(tmp_path, 1, "p2", "ready", "a")
         make_task(tmp_path, 100, "p2", "ready", "b")
         assert next_number(tmp_path) == 101  # max + 1, not fill gaps
+
+
+# ---------------------------------------------------------------------------
+# init
+# ---------------------------------------------------------------------------
+
+class TestInit:
+    def test_creates_dir_and_template(self, tmp_path):
+        tasks_dir = tmp_path / "tasks"
+        result = init(tasks_dir)
+        assert result.ok
+        assert tasks_dir.is_dir()
+        assert (tasks_dir / "_TEMPLATE.md").exists()
+        assert len(result.created) == 2
+        assert result.template_fields == sorted(VALID_FIELDS)
+
+    def test_template_has_frontmatter(self, tmp_path):
+        tasks_dir = tmp_path / "tasks"
+        init(tasks_dir)
+        content = (tasks_dir / "_TEMPLATE.md").read_text()
+        assert content.startswith("---\n")
+        assert "status:" in content
+        assert "priority:" in content
+        assert "created:" in content
+        assert "artifact:" in content
+
+    def test_fails_if_dir_exists(self, tmp_path):
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        result = init(tasks_dir)
+        assert not result.ok
+        assert "already exists" in result.error
+
+    def test_custom_path(self, tmp_path):
+        tasks_dir = tmp_path / "my-tasks"
+        result = init(tasks_dir)
+        assert result.ok
+        assert tasks_dir.is_dir()
+        assert (tasks_dir / "_TEMPLATE.md").exists()
+
+    def test_nested_path_creates_parents(self, tmp_path):
+        tasks_dir = tmp_path / "deep" / "nested" / "tasks"
+        result = init(tasks_dir)
+        assert result.ok
+        assert tasks_dir.is_dir()

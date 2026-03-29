@@ -95,6 +95,11 @@ def schema(compact: bool = False) -> dict[str, Any]:
     When compact=True, omits examples and descriptions to save tokens.
     """
     commands: dict[str, Any] = {
+        "init": {
+            "description": "Create a new tasks directory with a _TEMPLATE.md file. Fails if directory already exists.",
+            "args": {"tasks_dir": {"type": "path", "default": "./tasks"}},
+            "output": "InitResult with tasks_dir, created[], template_fields[]",
+        },
         "validate": {
             "description": "Check all task files for consistency",
             "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
@@ -147,6 +152,13 @@ def schema(compact: bool = False) -> dict[str, Any]:
 
     if not compact:
         s["workflows"] = [
+            {
+                "name": "Initialize a tasks directory",
+                "steps": [
+                    "taskmd init  # creates ./tasks/ with _TEMPLATE.md",
+                    "# Or: taskmd init my-tasks/  # custom path",
+                ],
+            },
             {
                 "name": "Create a new task",
                 "steps": [

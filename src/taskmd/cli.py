@@ -23,6 +23,7 @@ from taskmd.core import (
     VALID_PRIORITIES,
     VALID_STATUSES,
     fix,
+    init,
     list_tasks,
     next_number,
     validate,
@@ -34,6 +35,7 @@ _HELP_TEXT = """\
 Usage: taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
 
 Commands:
+  init       Create a new tasks directory with a template file
   validate   Check all task files for consistency
   fix        Auto-repair fixable issues (missing dates, mismatched filenames)
   next       Print the next available task number
@@ -149,6 +151,37 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(0)
 
     command = opts["command"]
+
+    if command == "init":
+        tasks_dir = opts["tasks_dir"] or Path(_DEFAULT_DIRS[0])
+        result = init(tasks_dir)
+        if use_json:
+            if result.ok:
+                print(success_envelope(
+                    "init",
+                    {
+                        "tasks_dir": str(result.tasks_dir),
+                        "created": result.created,
+                        "template_fields": result.template_fields,
+                    },
+                ))
+            else:
+                print(error_envelope(
+                    "init",
+                    [result.error],
+                    suggestions=["Use 'taskmd validate' to check existing tasks"],
+                ))
+                sys.exit(1)
+        else:
+            if result.ok:
+                for path in result.created:
+                    print(f"  created {path}")
+                print(f"Created {tasks_dir}/ with _TEMPLATE.md")
+            else:
+                print(f"Error: {result.error}", file=sys.stderr)
+                sys.exit(1)
+        return
+
     tasks_dir = opts["tasks_dir"] or _resolve_tasks_dir()
 
     if command == "validate":

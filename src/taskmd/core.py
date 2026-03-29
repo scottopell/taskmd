@@ -13,6 +13,7 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+from textwrap import dedent
 
 # ---------------------------------------------------------------------------
 # Constants (REQ-TM-002, REQ-TM-004)
@@ -40,6 +41,23 @@ _FILENAME_RE = re.compile(
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 VALID_FIELDS = frozenset({"created", "priority", "status", "artifact"})
+
+_TEMPLATE_CONTENT = dedent("""\
+    ---
+    created: YYYY-MM-DD
+    priority: p2
+    status: ready
+    artifact: path/to/output
+    ---
+
+    ## Summary
+
+    What this task is about.
+
+    ## Done When
+
+    - [ ] Acceptance criteria here
+""")
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +122,22 @@ class FixResult:
         if self.renamed:
             parts.append(f"renamed {self.renamed} file(s)")
         return ", ".join(parts).capitalize()
+
+
+@dataclass
+class InitResult:
+    """Result of initializing a tasks directory."""
+
+    tasks_dir: Path
+    created: list[str] = field(default_factory=list)
+    """Paths created (directory and template file)."""
+    template_fields: list[str] = field(default_factory=list)
+    """Frontmatter fields present in the template."""
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +432,34 @@ def next_number(tasks_dir: Path | str = "tasks") -> int:
         return 1
 
     return max(numbers) + 1
+
+
+# ---------------------------------------------------------------------------
+# Init (REQ-TM-007)
+# ---------------------------------------------------------------------------
+
+def init(tasks_dir: Path | str = "tasks") -> InitResult:
+    """Initialize a tasks directory with a template file.
+
+    Creates the directory and a _TEMPLATE.md file. Fails if the directory
+    already exists.
+    """
+    tasks_dir = Path(tasks_dir)
+    result = InitResult(tasks_dir=tasks_dir)
+
+    if tasks_dir.exists():
+        result.error = f"tasks directory already exists at {tasks_dir}"
+        return result
+
+    tasks_dir.mkdir(parents=True)
+    result.created.append(str(tasks_dir) + "/")
+
+    template_path = tasks_dir / "_TEMPLATE.md"
+    template_path.write_text(_TEMPLATE_CONTENT, encoding="utf-8")
+    result.created.append(str(template_path))
+
+    result.template_fields = sorted(VALID_FIELDS)
+    return result
 
 
 # ---------------------------------------------------------------------------
