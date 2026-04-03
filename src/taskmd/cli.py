@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import sys
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 from taskmd.agent import (
@@ -42,6 +43,7 @@ Commands:
   list       List all task files with metadata
 
 Options:
+  --version, -V   Print version and exit
   --agent         Force agent mode (JSON output, structured --help)
   --output FMT    Output format: json or text (default: text, json in agent mode)
   --compact       With --help in agent mode: minimal schema (fewer tokens)
@@ -68,6 +70,7 @@ def _parse_args(argv: list[str]) -> dict:
         "output": None,  # None means "auto" — text for humans, json for agents
         "compact": False,
         "help": False,
+        "version": False,
         "command": None,
         "tasks_dir": None,
         "status": None,
@@ -80,6 +83,8 @@ def _parse_args(argv: list[str]) -> dict:
         arg = argv[i]
         if arg in ("-h", "--help"):
             opts["help"] = True
+        elif arg in ("-V", "--version"):
+            opts["version"] = True
         elif arg == "--agent":
             opts["agent"] = True
         elif arg == "--compact":
@@ -141,6 +146,11 @@ def main(argv: list[str] | None = None) -> None:
     args = argv if argv is not None else sys.argv[1:]
     opts = _parse_args(args)
     use_json = _use_json(opts)
+
+    # --version
+    if opts["version"]:
+        print(f"taskmd {_pkg_version('taskmd')}")
+        sys.exit(0)
 
     # --help
     if opts["help"] or opts["command"] is None:
