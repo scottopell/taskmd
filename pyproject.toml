@@ -23,15 +23,8 @@ manifest-path = "taskmd-py/Cargo.toml"
 module-name = "taskmd._core"
 python-source = "src"
 
-[[tool.uv.index]]
-url = "https://depot-read-api-python.us1.ddbuild.io/magicmirror/magicmirror/@current/simple/"
-default = true
-
 [dependency-groups]
 dev = [
     "hypothesis>=6.151.10",
     "pytest>=9.0.2",
 ]
-
-[[tool.uv.index]]
-url = "https://depot-read-api-python.us1.ddbuild.io/magicmirror/testing/@current/simple/"
