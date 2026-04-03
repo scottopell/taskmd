@@ -3,7 +3,6 @@
 Exercises validate, fix, next_id, and parse_task_file against
 real task files on disk. Uses tmp_path fixtures -- no global state.
 """
-import os
 from pathlib import Path
 
 import pytest
@@ -71,23 +70,13 @@ class TestIdHelpers:
         assert len(prefix) == 2
         assert all(c.isdigit() for c in prefix)
 
-    def test_machine_id_env_var(self, tmp_path):
-        os.environ["TASKMD_MACHINE_ID"] = "7"
-        try:
-            prefix = _prefix_for(tmp_path)
-            assert prefix[0] == "7"
-        finally:
-            del os.environ["TASKMD_MACHINE_ID"]
-
-    def test_machine_id_env_var_invalid(self, tmp_path):
-        """Invalid TASKMD_MACHINE_ID falls back to hostname hash."""
-        os.environ["TASKMD_MACHINE_ID"] = "ab"
-        try:
-            p1 = _prefix_for(tmp_path)
-        finally:
-            del os.environ["TASKMD_MACHINE_ID"]
-        p2 = _prefix_for(tmp_path)
-        assert p1 == p2  # both use hostname hash
+    def test_prefix_stable_before_and_after_dir_creation(self, tmp_path):
+        """Prefix for a non-existent dir matches prefix after creation."""
+        tasks = tmp_path / "tasks"
+        before = _prefix_for(tasks)
+        tasks.mkdir()
+        after = _prefix_for(tasks)
+        assert before == after
 
     def test_parse_id_parts_numeric(self):
         assert _parse_id_parts("34042") == ("34", 42)

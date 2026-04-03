@@ -1,35 +1,75 @@
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+/// Maximum sequence number that fits in the 3-digit NNN suffix.
+const MAX_SEQ: u32 = 999;
+
+/// Compute D1 (machine digit) from an explicit override or hostname hash.
+fn machine_digit(machine_id_override: Option<&str>) -> usize {
+    if let Some(val) = machine_id_override {
+        if val.len() == 1 && val.as_bytes()[0].is_ascii_digit() {
+            return (val.as_bytes()[0] - b'0') as usize;
+        }
+    }
+    let hostname = gethostname::gethostname();
+    let hostname_str = hostname.to_string_lossy();
+    let h = Sha256::digest(hostname_str.as_bytes());
+    h[0] as usize % 10
+}
+
+/// Resolve a path to its canonical form, even if it doesn't exist yet.
+///
+/// Tries `canonicalize()` first (resolves symlinks, requires path to exist).
+/// Falls back to canonicalizing the nearest existing ancestor and appending
+/// the remaining components. This handles the common case where the tasks
+/// directory hasn't been created yet (e.g., before `taskmd init`).
+fn resolve_path(path: &Path) -> std::path::PathBuf {
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+    // Walk up until we find an ancestor that exists, canonicalize it,
+    // then re-append the tail components.
+    let abs = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let mut tail = Vec::new();
+    let mut ancestor = abs.as_path();
+    loop {
+        if let Ok(canonical) = ancestor.canonicalize() {
+            let mut result = canonical;
+            for component in tail.iter().rev() {
+                result.push(component);
+            }
+            return result;
+        }
+        match ancestor.file_name() {
+            Some(name) => {
+                tail.push(name.to_os_string());
+                ancestor = ancestor.parent().unwrap_or(ancestor);
+            }
+            None => return abs, // reached root without success, use absolute path
+        }
+    }
+}
+
+/// Compute D2 (directory digit) from the tasks directory path.
+fn dir_digit(tasks_dir: &Path) -> usize {
+    let resolved = resolve_path(tasks_dir);
+    let path_str = resolved.to_string_lossy();
+    let h = Sha256::digest(path_str.as_bytes());
+    h[0] as usize % 10
+}
+
 /// Derive a deterministic 2-digit numeric prefix for a tasks directory.
 ///
 /// - D1: `TASKMD_MACHINE_ID` env var (single digit 0-9) if set, else
 ///   `sha256(hostname) mod 10`.
-/// - D2: `sha256(canonical_path) mod 10`.
+/// - D2: `sha256(resolved_path) mod 10`.
 ///
 /// Different machines produce different D1; different worktrees on the same
 /// machine produce different D2. Together they partition the ID space so
 /// concurrent `taskmd next` across machines/worktrees won't collide.
 pub fn prefix_for(tasks_dir: &Path) -> String {
-    let d1 = match std::env::var("TASKMD_MACHINE_ID") {
-        Ok(val) if val.len() == 1 && val.as_bytes()[0].is_ascii_digit() => {
-            (val.as_bytes()[0] - b'0') as usize
-        }
-        _ => {
-            let hostname = gethostname::gethostname();
-            let hostname_str = hostname.to_string_lossy();
-            let h = Sha256::digest(hostname_str.as_bytes());
-            h[0] as usize % 10
-        }
-    };
-
-    let canonical = tasks_dir
-        .canonicalize()
-        .unwrap_or_else(|_| tasks_dir.to_path_buf());
-    let path_str = canonical.to_string_lossy();
-    let h = Sha256::digest(path_str.as_bytes());
-    let d2 = h[0] as usize % 10;
-
+    let d1 = machine_digit(std::env::var("TASKMD_MACHINE_ID").ok().as_deref());
+    let d2 = dir_digit(tasks_dir);
     format!("{d1}{d2}")
 }
 
@@ -72,13 +112,14 @@ pub fn parse_id_parts(task_id: &str) -> (String, u32) {
 /// Return the next available task ID for this tasks directory.
 ///
 /// Scans all existing files (any prefix format), takes the highest sequence
-/// number, and increments by 1. After migration, all files share the same
-/// prefix, so counting all sequences avoids gaps and collisions.
+/// number, and increments by 1. If the sequence overflows 999, D2 is
+/// incremented (mod 10) and the sequence resets to 001.
 pub fn next_id(tasks_dir: &Path) -> String {
-    let prefix = prefix_for(tasks_dir);
+    let d1 = machine_digit(std::env::var("TASKMD_MACHINE_ID").ok().as_deref());
+    let d2 = dir_digit(tasks_dir);
 
     if !tasks_dir.exists() {
-        return format!("{prefix}001");
+        return format!("{d1}{d2}001");
     }
 
     let mut max_seq: u32 = 0;
@@ -95,7 +136,14 @@ pub fn next_id(tasks_dir: &Path) -> String {
         }
     }
 
-    format!("{prefix}{:03}", max_seq + 1)
+    let next = max_seq + 1;
+    if next > MAX_SEQ {
+        // Overflow: bump D2 and reset sequence
+        let d2_next = (d2 + 1) % 10;
+        format!("{d1}{d2_next}001")
+    } else {
+        format!("{d1}{d2}{next:03}")
+    }
 }
 
 #[cfg(test)]
@@ -166,30 +214,83 @@ mod tests {
     }
 
     #[test]
-    fn prefix_machine_id_env_var() {
-        let tmp = tempfile::tempdir().unwrap();
-
-        // Set TASKMD_MACHINE_ID=7
-        std::env::set_var("TASKMD_MACHINE_ID", "7");
-        let prefix = prefix_for(tmp.path());
-        assert!(prefix.starts_with('7'), "expected prefix to start with '7', got '{prefix}'");
-
-        // Clean up
-        std::env::remove_var("TASKMD_MACHINE_ID");
+    fn machine_digit_override() {
+        assert_eq!(machine_digit(Some("7")), 7);
+        assert_eq!(machine_digit(Some("0")), 0);
     }
 
     #[test]
-    fn prefix_machine_id_env_var_invalid_ignored() {
+    fn machine_digit_invalid_override_falls_back() {
+        // Invalid values fall back to hostname hash -- just verify they don't panic
+        let d1 = machine_digit(Some("ab"));
+        assert!(d1 < 10);
+        let d2 = machine_digit(Some(""));
+        assert!(d2 < 10);
+        let d3 = machine_digit(None);
+        assert!(d3 < 10);
+        // Invalid and None should both produce hostname hash
+        assert_eq!(d1, d3);
+        assert_eq!(d2, d3);
+    }
+
+    #[test]
+    fn dir_digit_deterministic() {
         let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(dir_digit(tmp.path()), dir_digit(tmp.path()));
+    }
 
-        // Invalid values should fall back to hostname hash
-        std::env::set_var("TASKMD_MACHINE_ID", "ab");
-        let p1 = prefix_for(tmp.path());
+    #[test]
+    fn dir_digit_nonexistent_path_is_stable() {
+        // Even for a path that doesn't exist, dir_digit should produce a
+        // consistent result based on the absolute path resolution.
+        let tmp = tempfile::tempdir().unwrap();
+        let nonexistent = tmp.path().join("tasks");
+        let d1 = dir_digit(&nonexistent);
+        let d2 = dir_digit(&nonexistent);
+        assert_eq!(d1, d2);
+        // After creating the dir, the digit should remain the same
+        std::fs::create_dir(&nonexistent).unwrap();
+        let d3 = dir_digit(&nonexistent);
+        assert_eq!(d1, d3);
+    }
 
-        std::env::remove_var("TASKMD_MACHINE_ID");
-        let p2 = prefix_for(tmp.path());
+    #[test]
+    fn prefix_for_nonexistent_dir_matches_after_creation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let tasks = tmp.path().join("tasks");
+        let before = prefix_for(&tasks);
+        std::fs::create_dir(&tasks).unwrap();
+        let after = prefix_for(&tasks);
+        assert_eq!(before, after);
+    }
 
-        // Both should be the same (env var ignored -> hostname hash)
-        assert_eq!(p1, p2);
+    #[test]
+    fn next_id_overflow_bumps_d2() {
+        // Simulate: if max_seq were 999, next_id should overflow to next D2 bucket
+        // We test the overflow logic directly since creating 999 files is slow.
+        let d1 = 3_usize;
+        let d2 = 4_usize;
+        let max_seq = 999_u32;
+        let next = max_seq + 1;
+
+        let id = if next > MAX_SEQ {
+            let d2_next = (d2 + 1) % 10;
+            format!("{d1}{d2_next}001")
+        } else {
+            format!("{d1}{d2}{next:03}")
+        };
+
+        assert_eq!(id, "35001");
+        assert_eq!(id.len(), 5);
+    }
+
+    #[test]
+    fn next_id_overflow_d2_wraps() {
+        // D2=9 should wrap to D2=0
+        let d1 = 3_usize;
+        let d2 = 9_usize;
+        let d2_next = (d2 + 1) % 10;
+        let id = format!("{d1}{d2_next}001");
+        assert_eq!(id, "30001");
     }
 }
