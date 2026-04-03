@@ -106,14 +106,14 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "output": "ValidationResult with errors[] and file_count",
         },
         "fix": {
-            "description": "Auto-repair fixable issues (missing dates, mismatched filenames, legacy NNNN naming)",
+            "description": "Auto-repair fixable issues (missing dates, mismatched filenames, legacy ID formats)",
             "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
             "output": "FixResult with patches[], renames[], migrated count, errors[]",
         },
         "next": {
-            "description": "Print the next available task ID (prefix derived from directory path)",
+            "description": "Print the next available task ID (prefix derived from hostname + directory path)",
             "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
-            "output": "Task ID string (5-character AANNN format)",
+            "output": "Task ID string (5-digit numeric DDNNN format)",
         },
         "list": {
             "description": "List all task files with metadata",
@@ -136,9 +136,9 @@ def schema(compact: bool = False) -> dict[str, Any]:
         },
         "commands": commands,
         "task_format": {
-            "filename_pattern": "AANNN-pX-status--slug.md",
-            "id_format": "AA = 2 base-36 chars derived from tasks dir path, NNN = 3-digit sequence",
-            "example": "AB042-p2-ready--fix-the-bug.md",
+            "filename_pattern": "DDNNN-pX-status--slug.md",
+            "id_format": "D1 = hostname-derived digit, D2 = directory-derived digit, NNN = 3-digit sequence",
+            "example": "34042-p2-ready--fix-the-bug.md",
             "frontmatter_fields": {
                 "created": {"required": True, "format": "YYYY-MM-DD"},
                 "priority": {"required": True, "values": sorted(VALID_PRIORITIES)},
@@ -163,8 +163,8 @@ def schema(compact: bool = False) -> dict[str, Any]:
             {
                 "name": "Create a new task",
                 "steps": [
-                    "taskmd next  # get next ID, e.g. AB042",
-                    "Create file: tasks/AB042-p2-ready--short-slug.md",
+                    "taskmd next  # get next ID, e.g. 34042",
+                    "Create file: tasks/34042-p2-ready--short-slug.md",
                     "Add frontmatter: created, priority, status, artifact",
                     "Write task body with Summary and Done When sections",
                     "taskmd validate  # confirm it's valid",

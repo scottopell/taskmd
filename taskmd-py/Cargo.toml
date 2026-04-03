@@ -1,0 +1,14 @@
+[package]
+name = "taskmd-py"
+version = "0.1.0"
+edition = "2021"
+description = "PyO3 Python extension for taskmd-core"
+license = "MIT"
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+taskmd-core = { path = "../taskmd-core" }
+pyo3 = { version = "0.22", features = ["extension-module"] }

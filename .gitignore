@@ -5,3 +5,10 @@ dist/
 *.egg-info/
 .hypothesis/
 .pytest_cache/
+
+# Rust build output
+target/
+
+# maturin dev-build extension (rebuilt by `maturin develop` / `uv sync`)
+src/taskmd/_core*.so
+src/taskmd/_core*.pyd

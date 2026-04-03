@@ -7,15 +7,24 @@ requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Scott Opell" }]
 
-# Zero dependencies — stdlib only
+# Zero Python dependencies — all logic lives in the Rust extension.
 dependencies = []
 
 [project.scripts]
 taskmd = "taskmd.cli:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/taskmd"]
+[tool.maturin]
+# taskmd-py is the thin PyO3 wrapper; taskmd-core is the pure Rust library
+manifest-path = "taskmd-py/Cargo.toml"
+module-name = "taskmd._core"
+python-source = "src"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.151.10",
+    "pytest>=9.0.2",
+]

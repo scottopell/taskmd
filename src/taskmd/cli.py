@@ -166,6 +166,7 @@ def main(argv: list[str] | None = None) -> None:
                     },
                 ))
             else:
+                assert result.error is not None  # ok is False → error is set
                 print(error_envelope(
                     "init",
                     [result.error],
@@ -241,7 +242,7 @@ def main(argv: list[str] | None = None) -> None:
                 for old, new in result.renames:
                     print(f"  {old} -> {new}")
                 if result.migrated:
-                    print(f"  Note: {result.migrated} file(s) migrated from legacy NNNN to AANNN naming")
+                    print(f"  Note: {result.migrated} file(s) migrated to numeric ID format")
                 print(f"\u2713 {result.summary()}")
 
     elif command == "next":
