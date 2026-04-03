@@ -166,6 +166,7 @@ def main(argv: list[str] | None = None) -> None:
                     },
                 ))
             else:
+                assert result.error is not None  # ok is False → error is set
                 print(error_envelope(
                     "init",
                     [result.error],
