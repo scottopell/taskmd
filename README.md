@@ -1,7 +1,7 @@
 # task.md
 
-Task.md is a is structured but simple task management system.
-Tasks can be used as prompts for LLM Agents or tickets for humans.
+A structured but simple task management system.
+Tasks work as prompts for LLM agents or tickets for humans.
 
 Each task is a markdown file.
 Metadata lives in the filename and YAML frontmatter.
@@ -9,10 +9,12 @@ No database, no config file — the filesystem is the data store, git is the aud
 
 ```
 tasks/
-  0001-p1-done--initial-setup.md
-  0002-p2-ready--add-feature.md
-  0003-p3-blocked--waiting-on-api.md
+  AB001-p1-done--initial-setup.md
+  AB002-p2-ready--add-feature.md
+  AB003-p3-blocked--waiting-on-api.md
 ```
+
+Task IDs use a 5-character `AANNN` format (e.g., `AB042`) where the 2-character prefix is derived from the tasks directory path. This avoids ID conflicts across git worktrees.
 
 ## CLI
 
@@ -28,12 +30,24 @@ Or install as a persistent tool:
 
 ```bash
 uv tool install git+https://github.com/scottopell/taskmd.git
+taskmd init         # create tasks directory with a template file
 taskmd validate     # check all task files for consistency
-taskmd fix          # auto-repair (missing dates, mismatched filenames)
-taskmd next         # print next available task number
+taskmd fix          # auto-repair (missing dates, mismatched filenames, legacy naming)
+taskmd next         # print the next available task ID
+taskmd list         # list all tasks with metadata
 ```
 
-All commands default to `./tasks` — pass a path to use a different directory.
+All commands auto-detect `./tasks` or `./tasksmd` as the default directory. Pass a path to override.
+
+### Agent mode
+
+When run inside an LLM coding agent (Claude Code, Cursor, Codex, etc.), taskmd auto-detects the environment and switches to JSON output. You can also force it:
+
+```bash
+taskmd --agent validate        # structured JSON envelope
+taskmd --agent --help          # self-documenting schema for agents
+taskmd --agent --compact --help  # minimal schema (fewer tokens)
+```
 
 ## Library
 
@@ -44,7 +58,7 @@ uv pip install git+https://github.com/scottopell/taskmd.git
 ```
 
 ```python
-from taskmd import validate, fix, next_number, list_tasks
+from taskmd import validate, fix, next_id, list_tasks
 
 result = validate("tasks")
 if not result.ok:
@@ -53,10 +67,10 @@ if not result.ok:
 
 tasks = list_tasks("tasks")
 for t in tasks:
-    print(f"{t.number:04d} {t.priority} {t.status:12s} {t.slug}")
+    print(f"{t.id:5s} {t.priority} {t.status:12s} {t.slug}")
 
-n = next_number("tasks")
-print(f"Next task: {n:04d}")
+n = next_id("tasks")
+print(f"Next task: {n}")
 ```
 
 ## Use from a PEP 723 script (e.g., dev.py)
@@ -77,7 +91,7 @@ if not result.ok:
 
 ## Task file format
 
-Filename: `NNNN-pX-status--slug.md`
+Filename: `AANNN-pX-status--slug.md`
 
 ```yaml
 ---
@@ -103,7 +117,11 @@ What needs to be done.
 
 **Artifact:** the concrete output this task produces (file path, config change, commit). Required.
 
+Only the four fields above are allowed in frontmatter — unknown fields are rejected by validation.
+
 **To change status:** edit the `status:` field in frontmatter, then `taskmd fix`.
+
+**Legacy migration:** files using the old `NNNN` 4-digit format are auto-migrated to `AANNN` by `taskmd fix`.
 
 ## License
 
