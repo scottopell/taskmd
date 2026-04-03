@@ -44,6 +44,11 @@ fn is_legacy_id(task_id: &str) -> bool {
 }
 
 #[pyfunction]
+fn needs_migration(task_id: &str, expected_prefix: &str) -> bool {
+    ids::needs_migration(task_id, expected_prefix)
+}
+
+#[pyfunction]
 fn parse_id_parts(task_id: &str) -> (String, u32) {
     ids::parse_id_parts(task_id)
 }
@@ -162,6 +167,7 @@ fn _core(m: &pyo3::Bound<'_, PyModule>) -> PyResult<()> {
     // Internal helpers (test suite)
     m.add_function(wrap_pyfunction!(task_files, m)?)?;
     m.add_function(wrap_pyfunction!(is_legacy_id, m)?)?;
+    m.add_function(wrap_pyfunction!(needs_migration, m)?)?;
     m.add_function(wrap_pyfunction!(parse_id_parts, m)?)?;
     m.add_function(wrap_pyfunction!(prefix_for, m)?)?;
 

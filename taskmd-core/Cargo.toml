@@ -12,9 +12,10 @@ license = "MIT"
 name = "taskmd_core"
 
 [dependencies]
-chrono = { version = "0.4", features = ["clock"], default-features = false }
-sha2   = "0.10"
-regex  = "1"
+chrono     = { version = "0.4", features = ["clock"], default-features = false }
+gethostname = "1"
+sha2       = "0.10"
+regex      = "1"
 
 [dev-dependencies]
 tempfile = "3"

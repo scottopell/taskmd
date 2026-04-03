@@ -24,6 +24,7 @@ from taskmd._core import (  # type: ignore[import]
     fix_summary as _fix_summary,
     get_expected_filename as _get_expected_filename,
     is_legacy_id as _is_legacy_id,
+    needs_migration as _needs_migration_raw,
     list_tasks as _list_tasks,
     next_id as _next_id,
     parse_frontmatter as _parse_frontmatter_str,
@@ -124,8 +125,13 @@ def _parse_id_parts(task_id: str) -> tuple[str, int]:
 
 
 def _prefix_for(tasks_dir: Path | str) -> str:
-    """Derive a deterministic 2-char prefix from a tasks dir realpath."""
+    """Derive a deterministic 2-digit prefix from hostname + tasks dir realpath."""
     return _prefix_for_raw(str(tasks_dir))
+
+
+def _needs_migration(task_id: str, expected_prefix: str) -> bool:
+    """True if a task ID needs migration to the expected prefix."""
+    return _needs_migration_raw(task_id, expected_prefix)
 
 
 def _task_files(tasks_dir: Path | str) -> list[Path]:

@@ -5,13 +5,13 @@ use regex::Regex;
 
 use crate::date::infer_created_date;
 use crate::filename::format_filename;
-use crate::ids::{is_legacy_id, parse_id_parts, prefix_for};
+use crate::ids::{needs_migration, parse_id_parts, prefix_for};
 use crate::util::is_valid_date;
 use crate::tasks::{parse_task_file, task_files};
 
-/// Maximum sequence number that fits in the 3-digit AANNN format.
-/// Legacy files with a sequence above this cannot be migrated automatically.
-const MAX_LEGACY_SEQ: u32 = 999;
+/// Maximum sequence number that fits in the 3-digit NNN suffix.
+/// Files with a sequence above this cannot be migrated automatically.
+const MAX_SEQ: u32 = 999;
 
 // Matches "created: <anything>" at the start of a line (multiline mode).
 static CREATED_RE: LazyLock<Regex> =
@@ -33,7 +33,7 @@ pub fn fix_summary(patched: usize, renamed: usize, migrated: usize) -> String {
         parts.push(format!("renamed {renamed} file(s)"));
     }
     if migrated > 0 {
-        parts.push(format!("migrated {migrated} file(s) to AANNN format"));
+        parts.push(format!("migrated {migrated} file(s) to numeric ID format"));
     }
     let joined = parts.join(", ");
     let mut chars = joined.chars();
@@ -65,7 +65,7 @@ impl FixResult {
 }
 
 /// Auto-fix task files: inject missing `created`, rename to match frontmatter,
-/// and migrate legacy NNNN IDs to the AANNN format.
+/// and migrate IDs with non-matching prefixes to the current numeric format.
 pub fn fix(tasks_dir: &Path) -> FixResult {
     let mut result = FixResult {
         patched: 0,
@@ -89,6 +89,20 @@ pub fn fix(tasks_dir: &Path) -> FixResult {
     };
 
     let prefix = prefix_for(tasks_dir);
+
+    // Track sequences already claimed (by existing correct-prefix files and
+    // by files migrated earlier in this loop) to avoid collisions.
+    let mut used_seqs: std::collections::HashSet<u32> = std::collections::HashSet::new();
+
+    // Pre-populate with sequences from files that already have the correct prefix.
+    for path in &files {
+        if let Some(task) = parse_task_file(path) {
+            let (pfx, seq) = parse_id_parts(&task.id);
+            if pfx == prefix {
+                used_seqs.insert(seq);
+            }
+        }
+    }
 
     for path in &files {
         let task = match parse_task_file(path) {
@@ -155,19 +169,30 @@ pub fn fix(tasks_dir: &Path) -> FixResult {
             }
         };
 
-        // ── Migrate legacy NNNN → AANNN ──────────────────────────────────────
+        // ── Migrate any ID whose prefix doesn't match ──────────────────────
         let mut task_id = task.id.clone();
-        if is_legacy_id(&task_id) {
-            let (_, seq) = parse_id_parts(&task_id);
-            if seq > MAX_LEGACY_SEQ {
+        if needs_migration(&task_id, &prefix) {
+            let (_, mut seq) = parse_id_parts(&task_id);
+            if seq > MAX_SEQ {
                 result.errors.push(format!(
-                    "{name}: legacy task number {seq} exceeds {MAX_LEGACY_SEQ}, \
+                    "{name}: task sequence {seq} exceeds {MAX_SEQ}, \
                      cannot migrate to 3-digit format"
                 ));
                 continue;
             }
+            // Bump sequence if it collides with an already-claimed ID.
+            while used_seqs.contains(&seq) {
+                seq += 1;
+            }
+            if seq > MAX_SEQ {
+                result.errors.push(format!(
+                    "{name}: no available sequence after collision avoidance"
+                ));
+                continue;
+            }
+            used_seqs.insert(seq);
             task_id = format!("{prefix}{seq:03}");
-            result.migrated += 1; // matches Python: counted even if rename fails
+            result.migrated += 1;
         }
 
         // ── Rename to match frontmatter ──────────────────────────────────────

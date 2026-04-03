@@ -1,7 +1,7 @@
 //! taskmd-core: pure Rust implementation of taskmd logic.
 //!
 //! This crate is the single source of truth for:
-//!   - Task ID generation (AANNN format with directory-derived prefix)
+//!   - Task ID generation (numeric DDNNN format with hostname+directory prefix)
 //!   - Filename parsing, formatting, and pattern constant
 //!   - Slug derivation
 //!   - Frontmatter parsing

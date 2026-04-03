@@ -9,12 +9,14 @@ No database, no config file — the filesystem is the data store, git is the aud
 
 ```
 tasks/
-  AB001-p1-done--initial-setup.md
-  AB002-p2-ready--add-feature.md
-  AB003-p3-blocked--waiting-on-api.md
+  34001-p1-done--initial-setup.md
+  34002-p2-ready--add-feature.md
+  34003-p3-blocked--waiting-on-api.md
 ```
 
-Task IDs use a 5-character `AANNN` format (e.g., `AB042`) where the 2-character prefix is derived from the tasks directory path. This avoids ID conflicts across git worktrees.
+Task IDs are 5-digit numbers (e.g., `34042`) where the first digit is derived from the machine's hostname and the second from the tasks directory path. This avoids ID conflicts across machines and git worktrees without coordination.
+
+Set `TASKMD_MACHINE_ID=0` to pin the first digit on your primary machine.
 
 ## CLI
 
@@ -32,7 +34,7 @@ Or install as a persistent tool:
 uv tool install git+https://github.com/scottopell/taskmd.git
 taskmd init         # create tasks directory with a template file
 taskmd validate     # check all task files for consistency
-taskmd fix          # auto-repair (missing dates, mismatched filenames, legacy naming)
+taskmd fix          # auto-repair (missing dates, mismatched filenames, legacy ID formats)
 taskmd next         # print the next available task ID
 taskmd list         # list all tasks with metadata
 ```
@@ -91,7 +93,7 @@ if not result.ok:
 
 ## Task file format
 
-Filename: `AANNN-pX-status--slug.md`
+Filename: `DDNNN-pX-status--slug.md`
 
 ```yaml
 ---
@@ -121,7 +123,7 @@ Only the four fields above are allowed in frontmatter — unknown fields are rej
 
 **To change status:** edit the `status:` field in frontmatter, then `taskmd fix`.
 
-**Legacy migration:** files using the old `NNNN` 4-digit format are auto-migrated to `AANNN` by `taskmd fix`.
+**Legacy migration:** files using old formats (4-digit `NNNN` or alpha-prefix `AANNN`) are auto-migrated by `taskmd fix`.
 
 ## License
 

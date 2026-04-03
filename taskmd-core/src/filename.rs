@@ -16,8 +16,12 @@ pub const MAX_SLUG_LEN: usize = 40;
 pub static FILENAME_PATTERN: LazyLock<String> = LazyLock::new(|| {
     let statuses = VALID_STATUSES.join("|");
     let priorities = VALID_PRIORITIES.join("|");
-    // Braces are doubled because format! uses them as escape sequences.
-    format!(r"^([A-HJ-NP-Z0-9]{{2}}\d{{3}}|\d{{4}})-({priorities})-({statuses})--(.+)\.md$")
+    // Three ID formats (tried in order):
+    //   \d{5}              — new all-numeric DDNNN (e.g. 34042)
+    //   [A-HJ-NP-Z]{2}\d{3} — old alpha-prefix AANNN (e.g. YF042), letters-only
+    //                         prefix so it doesn't overlap with \d{5}
+    //   \d{4}              — legacy 4-digit (e.g. 0042)
+    format!(r"^(\d{{5}}|[A-HJ-NP-Z]{{2}}\d{{3}}|\d{{4}})-({priorities})-({statuses})--(.+)\.md$")
 });
 
 static FILENAME_RE: LazyLock<Regex> =
@@ -80,7 +84,7 @@ mod tests {
     #[test]
     fn pattern_contains_all_valid_statuses() {
         for status in VALID_STATUSES {
-            let name = format!("AB042-p2-{status}--slug.md");
+            let name = format!("34042-p2-{status}--slug.md");
             assert!(
                 parse_filename(&name).is_some(),
                 "pattern missing status '{status}'"
@@ -91,7 +95,7 @@ mod tests {
     #[test]
     fn pattern_contains_all_valid_priorities() {
         for priority in VALID_PRIORITIES {
-            let name = format!("AB042-{priority}-ready--slug.md");
+            let name = format!("34042-{priority}-ready--slug.md");
             assert!(
                 parse_filename(&name).is_some(),
                 "pattern missing priority '{priority}'"
@@ -100,11 +104,20 @@ mod tests {
     }
 
     #[test]
-    fn parse_new_format() {
-        let r = parse_filename("AB042-p2-ready--fix-the-bug.md");
+    fn parse_numeric_format() {
+        let r = parse_filename("34042-p2-ready--fix-the-bug.md");
         assert_eq!(
             r,
-            Some(("AB042".into(), "p2".into(), "ready".into(), "fix-the-bug".into()))
+            Some(("34042".into(), "p2".into(), "ready".into(), "fix-the-bug".into()))
+        );
+    }
+
+    #[test]
+    fn parse_alpha_prefix_format() {
+        let r = parse_filename("YF042-p2-ready--fix-the-bug.md");
+        assert_eq!(
+            r,
+            Some(("YF042".into(), "p2".into(), "ready".into(), "fix-the-bug".into()))
         );
     }
 
@@ -120,12 +133,19 @@ mod tests {
     #[test]
     fn parse_rejects_bad_name() {
         assert!(parse_filename("not-a-task.md").is_none());
-        assert!(parse_filename("AB042-p5-ready--slug.md").is_none()); // p5 invalid
-        assert!(parse_filename("AB042-p2-pending--slug.md").is_none()); // unknown status
+        assert!(parse_filename("34042-p5-ready--slug.md").is_none()); // p5 invalid
+        assert!(parse_filename("34042-p2-pending--slug.md").is_none()); // unknown status
     }
 
     #[test]
-    fn format_roundtrip() {
+    fn format_roundtrip_numeric() {
+        let name = "34042-p2-in-progress--my-slug.md";
+        let (id, pri, status, slug) = parse_filename(name).unwrap();
+        assert_eq!(format_filename(&id, &pri, &status, &slug), name);
+    }
+
+    #[test]
+    fn format_roundtrip_alpha() {
         let name = "YF042-p2-in-progress--my-slug.md";
         let (id, pri, status, slug) = parse_filename(name).unwrap();
         assert_eq!(format_filename(&id, &pri, &status, &slug), name);

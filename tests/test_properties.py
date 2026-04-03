@@ -30,9 +30,13 @@ from taskmd.core import (
 # ---------------------------------------------------------------------------
 
 def task_ids():
-    """5-character task IDs: 2 chars from ID alphabet (no O) + 3-digit sequence."""
-    prefix = st.from_regex(r"[A-HJ-NP-Z0-9]{2}", fullmatch=True)
-    seq = st.integers(min_value=1, max_value=999)
+    """5-digit numeric task IDs: 2-digit prefix + 3-digit sequence.
+
+    Max sequence capped at 990 to leave headroom for next_id() and
+    collision-avoidance bumps during migration.
+    """
+    prefix = st.from_regex(r"[0-9]{2}", fullmatch=True)
+    seq = st.integers(min_value=1, max_value=990)
     return st.tuples(prefix, seq).map(lambda ps: ps[0] + f"{ps[1]:03d}")
 
 
@@ -164,7 +168,7 @@ def test_slug_preservation(task_id, priority, status, slug):
 
 @given(valid_task_params())
 def test_parsed_id_format(params):
-    """Property 4: parsed ID matches the AANNN format."""
+    """Property 4: parsed ID matches the DDNNN (5-digit numeric) format."""
     task_id, priority, status, slug = params
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
@@ -172,7 +176,7 @@ def test_parsed_id_format(params):
         path.write_text(f"---\ncreated: 2026-01-01\npriority: {priority}\nstatus: {status}\n---\n")
         task = parse_task_file(path)
         assert task is not None
-        assert re.match(r'^[A-HJ-NP-Z0-9]{2}\d{3}$', task.id)
+        assert re.match(r'^\d{5}$', task.id)
 
 
 @given(valid_task_params())
@@ -203,10 +207,10 @@ def test_parsed_status_valid(params):
 
 @given(valid_task_params())
 def test_filename_starts_with_five_char_id(params):
-    """Property 7: generated filename always starts with a 5-char AANNN ID."""
+    """Property 7: generated filename always starts with a 5-digit numeric ID."""
     task_id, priority, status, slug = params
     filename = get_expected_filename(task_id, priority, status, slug)
-    assert re.match(r"^[A-HJ-NP-Z0-9]{2}\d{3}-", filename), f"Expected AANNN prefix, got: {filename!r}"
+    assert re.match(r"^\d{5}-", filename), f"Expected DDNNN prefix, got: {filename!r}"
     prefix = filename.split("-")[0]
     assert len(prefix) == 5
 
@@ -324,9 +328,9 @@ def test_next_id_starts_at_001(tasks_dir):
 @given(task_directories(3))
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_next_id_format(tasks_dir):
-    """Property 15: next_id always returns a valid 5-char AANNN string."""
+    """Property 15: next_id always returns a valid 5-digit numeric string."""
     result = next_id(tasks_dir)
-    assert re.match(r'^[A-HJ-NP-Z0-9]{2}\d{3}$', result), f"Invalid next_id: {result!r}"
+    assert re.match(r'^\d{5}$', result), f"Invalid next_id: {result!r}"
 
 
 @given(valid_task_params())
@@ -396,22 +400,24 @@ def test_duplicate_ids_always_detected(task_id, pri1, sta1, slug1, pri2, sta2, s
 
 
 @given(
-    task_ids(),
     priorities(),
     statuses(),
     slugs(),
     priorities(),
     statuses(),
     slugs(),
+    st.integers(min_value=1, max_value=990),
 )
-def test_duplicate_ids_not_fixable(task_id, pri1, sta1, slug1, pri2, sta2, slug2):
-    """Property 21: duplicate task IDs cannot be fixed by fix."""
-    assume(
-        get_expected_filename(task_id, pri1, sta1, slug1)
-        != get_expected_filename(task_id, pri2, sta2, slug2)
-    )
+def test_duplicate_ids_not_fixable(pri1, sta1, slug1, pri2, sta2, slug2, seq):
+    """Property 21: duplicate task IDs (with correct prefix) cannot be fixed by fix."""
     with tempfile.TemporaryDirectory() as tmp_str:
         tasks_dir = Path(tmp_str)
+        # Use the dir's own prefix so fix() won't migrate these files
+        task_id = _prefix_for(tasks_dir) + f"{seq:03d}"
+        assume(
+            get_expected_filename(task_id, pri1, sta1, slug1)
+            != get_expected_filename(task_id, pri2, sta2, slug2)
+        )
         _write_task_file(tasks_dir, task_id, pri1, sta1, slug1)
         _write_task_file(tasks_dir, task_id, pri2, sta2, slug2)
         fix(tasks_dir)
