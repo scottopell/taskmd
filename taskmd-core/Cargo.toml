@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Core logic for taskmd — Markdown-native task management"
 license = "MIT"
+repository = "https://github.com/scottopell/taskmd"
+keywords = ["taskmd", "task-management", "markdown"]
+categories = ["command-line-utilities"]
 
 # Pure Rust library — no PyO3 dependency.
 # Phoenix IDE (and any other Rust consumer) depends on this crate directly.
