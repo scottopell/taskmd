@@ -41,8 +41,8 @@ This project uses itself for task management.
 
 Set `TASKMD_MACHINE_ID=0` to pin D1 on your primary machine.
 
-**To change status:** edit frontmatter `status:` field, then `taskmd fix`. Never rename
-task files directly.
+**To change status:** edit frontmatter `status:` field, then `taskmd fix` to rename
+the file to match. You can also rename the file directly if you prefer.
 
 **To create a new task:** `taskmd next` prints the next ID.
 Create the file.

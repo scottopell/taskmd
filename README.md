@@ -121,7 +121,7 @@ What needs to be done.
 
 Only the four fields above are allowed in frontmatter — unknown fields are rejected by validation.
 
-**To change status:** edit the `status:` field in frontmatter, then `taskmd fix`.
+**To change status:** edit the `status:` field in frontmatter, then `taskmd fix` to rename the file to match. You can also rename the file directly.
 
 **Legacy migration:** files using old formats (4-digit `NNNN` or alpha-prefix `AANNN`) are auto-migrated by `taskmd fix`.
 

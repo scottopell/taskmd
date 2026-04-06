@@ -109,26 +109,13 @@ In agent mode, structure this as data:
 
 ### 7. Expose the library, not just the CLI
 
-taskmd already does this well: `core.py` has pure functions returning
-dataclasses, and `cli.py` is a thin wrapper. Agents that run as Python
-processes can import the library directly and skip the CLI entirely.
+taskmd already does this well: all logic lives in a Rust core library
+(`taskmd-core/`), exposed to Python via PyO3 (`taskmd._core`). `core.py` is a
+thin shim that wraps the Rust extension with Python dataclasses. `cli.py` is a
+thin wrapper over that. Agents running as Python processes can import the
+library directly and skip the CLI entirely.
 
 The CLI's agent mode is for agents that interact via shell commands (which is
-most of them today). But keep the library API as the source of truth.
+most of them today). The Rust library is the source of truth for constants,
+validation, and all task operations.
 
-## What This Means for taskmd
-
-The existing CLI has 3 commands (`validate`, `fix`, `next`) and a library
-function (`list_tasks`) not yet exposed in the CLI. The implementation plan:
-
-1. Add agent auto-detection (env vars + `--agent` flag)
-2. Add `--output json` flag (default to text for humans, JSON in agent mode)
-3. JSON envelope wrapping existing dataclass output
-4. Structured `--help` schema in agent mode
-5. Expose `list` as a CLI subcommand with filtering
-6. Upgrade error messages to include suggestions and valid values
-7. Embed task format spec and workflows in schema output
-
-The library layer (`core.py`) needs minimal changes -- most of the work is in
-`cli.py` and a new `schema.py` or similar module for generating the agent
-schema.

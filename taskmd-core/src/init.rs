@@ -2,22 +2,32 @@ use std::path::{Path, PathBuf};
 
 use crate::constants::VALID_FIELDS;
 
-// Matches the Python _TEMPLATE_CONTENT exactly (uses textwrap.dedent).
 const TEMPLATE_CONTENT: &str = "\
 ---
 created: YYYY-MM-DD
 priority: p2
 status: ready
-artifact: path/to/output
+artifact: path/to/file-or-system-change
 ---
+# Task Title
 
 ## Summary
 
-What this task is about.
+Brief description of what needs to be done.
+
+## Context
+
+Why this task exists, any relevant background.
 
 ## Done When
 
-- [ ] Acceptance criteria here
+- [ ] Criterion 1
+- [ ] Criterion 2
+- [ ] Criterion 3
+
+## Notes
+
+Any additional information, links, or considerations.
 ";
 
 pub struct InitResult {

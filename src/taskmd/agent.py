@@ -133,11 +133,12 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "--agent": {"description": "Force agent mode (JSON output, structured --help)"},
             "--output": {"type": "json|text", "default": "text (json in agent mode)"},
             "--compact": {"description": "Minimal schema output (fewer tokens)"},
+            "--version, -V": {"description": "Print version and exit"},
         },
         "commands": commands,
         "task_format": {
             "filename_pattern": "DDNNN-pX-status--slug.md",
-            "id_format": "D1 = hostname-derived digit, D2 = directory-derived digit, NNN = 3-digit sequence",
+            "id_format": "D1 = hostname-derived digit, D2 = directory-derived digit, NNN = 3-digit sequence (see environment_variables for overrides)",
             "example": "34042-p2-ready--fix-the-bug.md",
             "frontmatter_fields": {
                 "created": {"required": True, "format": "YYYY-MM-DD"},
@@ -149,9 +150,39 @@ def schema(compact: bool = False) -> dict[str, Any]:
         "valid_statuses": sorted(VALID_STATUSES),
         "valid_priorities": sorted(VALID_PRIORITIES),
         "valid_fields": sorted(VALID_FIELDS),
+        "environment_variables": {
+            "TASKMD_MACHINE_ID": {
+                "description": "Override D1 (machine digit) in task ID generation",
+                "values": "single digit 0-9",
+                "default": "sha256(hostname) mod 10",
+            },
+            "FORCE_AGENT_MODE": {
+                "description": "Force agent mode regardless of caller",
+                "values": "1, true, yes",
+            },
+            "agent_detection": {
+                "description": "Agent mode activates automatically when any of these are truthy",
+                "vars": [var for vars, _ in _AGENT_DETECTORS for var in vars],
+            },
+        },
     }
 
+    # Compact mode gets essential guidance only; full mode gets everything.
+    s["guidance"] = [
+        "Tasks are markdown files. Create and edit them directly -- that's the primary interface.",
+        "A task tracks work blocked by something: user input, a different environment, passage of time, or an unmade decision. If nothing blocks you from doing it now, just do it instead of creating a task.",
+        "The artifact: field names what this task produces when done (a file, a config change, a commit). If you can't fill it in, the task probably shouldn't exist.",
+        "Frontmatter is the source of truth. To change status, edit the status: field. 'taskmd fix' will rename the file to match, or you can rename it yourself.",
+    ]
+
     if not compact:
+        s["guidance"] += [
+            "Filenames use double-dash before the slug: 'status--slug', not 'status-slug'. Slugs are kebab-case, 3-5 words.",
+            "Only these fields belong in frontmatter: " + ", ".join(sorted(VALID_FIELDS)) + ". Everything else goes in the markdown body.",
+            "Use 'taskmd next' to get the next available task ID.",
+            "Run 'taskmd validate' after creating or editing task files to catch issues early.",
+            "One concern per task file -- split large tasks into subtasks.",
+        ]
         s["workflows"] = [
             {
                 "name": "Initialize a tasks directory",
@@ -166,7 +197,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
                     "taskmd next  # get next ID, e.g. 34042",
                     "Create file: tasks/34042-p2-ready--short-slug.md",
                     "Add frontmatter: created, priority, status, artifact",
-                    "Write task body with Summary and Done When sections",
+                    "Write task body with Summary, Context, Done When, and Notes sections",
                     "taskmd validate  # confirm it's valid",
                 ],
             },
@@ -186,25 +217,6 @@ def schema(compact: bool = False) -> dict[str, Any]:
                 ],
             },
         ]
-        s["anti_patterns"] = [
-            "Don't rename task files directly -- edit frontmatter and run 'taskmd fix'",
-            "Don't use sequence 000 in task IDs -- sequences start at 001",
-            "Don't omit the double-dash before the slug -- it's 'status--slug', not 'status-slug'",
-            "Don't put spaces in slugs -- use hyphens: 'fix-the-bug' not 'fix the bug'",
-            "Don't create tasks for work you can do right now. A task tracks work blocked by something: user input, a different environment, passage of time, or an unmade decision. If nothing prevents you from doing it immediately, it's an action -- just do it.",
-            "Don't create tasks that describe transient system states with no durable artifact. If you can't fill in the artifact: field honestly, the task should not exist.",
-            "Don't add extra fields to frontmatter (e.g. result:, notes:, assignee:). Only the valid fields are allowed: " + ", ".join(sorted(VALID_FIELDS)) + ". Put everything else in the markdown body.",
-        ]
-        s["best_practices"] = [
-            "Run 'taskmd validate' after creating or editing task files",
-            "Run 'taskmd fix' to auto-repair rather than manually renaming files",
-            "Use 'taskmd list --status ready' to find work that needs to be done",
-            "Keep slugs short and descriptive (3-5 words)",
-            "One concern per task file -- split large tasks into subtasks",
-            "Before creating a task, ask: what blocks me from doing this now? If the answer is nothing, it's an action, not a task -- just do it.",
-            "The artifact: field should name what this task produces or changes when done (a file, a config, a commit). If you struggle to fill it in, reconsider whether the task should exist.",
-        ]
-
     return s
 
 

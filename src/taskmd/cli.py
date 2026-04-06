@@ -226,7 +226,11 @@ def main(argv: list[str] | None = None) -> None:
         result = fix(tasks_dir)
         if use_json:
             if result.errors:
-                print(error_envelope("fix", result.errors))
+                print(error_envelope(
+                    "fix",
+                    result.errors,
+                    suggestions=["Run 'taskmd validate' to see all issues", "Check that task files have valid frontmatter (status, priority, created, artifact)"],
+                ))
                 sys.exit(1)
             else:
                 print(success_envelope(
