@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::constants::VALID_STATUSES;
 use crate::error::Error;
 use crate::filename::{format_filename, parse_filename};
 use crate::frontmatter::{parse_frontmatter_file, FRONTMATTER_OPEN};
@@ -130,6 +131,13 @@ pub fn rename_status(
     id: &str,
     new_status: &str,
 ) -> Result<(String, String), Error> {
+    if !VALID_STATUSES.contains(&new_status) {
+        return Err(Error::InvalidValue(format!(
+            "invalid status '{new_status}', expected one of: {}",
+            VALID_STATUSES.join(", ")
+        )));
+    }
+
     let task = find_task_by_id(tasks_dir, id)
         .ok_or_else(|| Error::NotFound(format!("task {id} not found in {}", tasks_dir.display())))?;
 
@@ -139,7 +147,16 @@ pub fn rename_status(
         .expect("task path has filename")
         .to_string_lossy()
         .to_string();
-    let new_name = format_filename(&task.id, &task.priority, new_status, &task.slug);
+
+    // Use priority from frontmatter (source of truth), falling back to
+    // the filename-derived value if frontmatter doesn't have it.
+    let priority = task
+        .fields
+        .get("priority")
+        .cloned()
+        .unwrap_or(task.priority.clone());
+
+    let new_name = format_filename(&task.id, &priority, new_status, &task.slug);
     let new_path = tasks_dir.join(&new_name);
 
     if new_path.exists() && new_path != task.path {
@@ -162,6 +179,25 @@ pub fn rename_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Helper: create a task file with given frontmatter fields and return its dir.
+    fn setup_task(
+        id: &str,
+        fm_priority: &str,
+        fn_priority: &str,
+        status: &str,
+        slug: &str,
+    ) -> (TempDir, String) {
+        let tmp = TempDir::new().unwrap();
+        let filename = format_filename(id, fn_priority, status, slug);
+        let content = format!(
+            "---\ncreated: 2026-01-01\npriority: {fm_priority}\nstatus: {status}\nartifact: src/{slug}.py\n---\n\nBody\n"
+        );
+        fs::write(tmp.path().join(&filename), content).unwrap();
+        (tmp, filename)
+    }
 
     #[test]
     fn update_status_replaces_status_line() {
@@ -178,5 +214,58 @@ mod tests {
         let content = "no frontmatter here";
         let updated = update_status_in_content(content, "done");
         assert_eq!(updated, content);
+    }
+
+    // -- Bug 6: rename_status must reject invalid statuses --
+
+    #[test]
+    fn rename_status_rejects_invalid_status() {
+        let (tmp, _) = setup_task("34001", "p2", "p2", "ready", "my-task");
+        let result = rename_status(tmp.path(), "34001", "pending");
+        assert!(result.is_err(), "rename_status accepted invalid status 'pending'");
+    }
+
+    #[test]
+    fn rename_status_rejects_empty_status() {
+        let (tmp, _) = setup_task("34001", "p2", "p2", "ready", "my-task");
+        let result = rename_status(tmp.path(), "34001", "");
+        assert!(result.is_err(), "rename_status accepted empty status");
+    }
+
+    #[test]
+    fn rename_status_accepts_all_valid_statuses() {
+        for &status in crate::constants::VALID_STATUSES {
+            let (tmp, _) = setup_task("34001", "p2", "p2", "ready", "my-task");
+            let result = rename_status(tmp.path(), "34001", status);
+            assert!(
+                result.is_ok(),
+                "rename_status rejected valid status '{status}': {:?}",
+                result.err()
+            );
+        }
+    }
+
+    #[test]
+    fn rename_status_file_still_discoverable() {
+        let (tmp, _) = setup_task("34001", "p2", "p2", "ready", "my-task");
+        rename_status(tmp.path(), "34001", "done").unwrap();
+        let found = find_task_by_id(tmp.path(), "34001");
+        assert!(found.is_some(), "task not discoverable after rename_status");
+        assert_eq!(found.unwrap().status, "done");
+    }
+
+    // -- Bug 9: rename_status should use frontmatter priority, not filename priority --
+
+    #[test]
+    fn rename_status_uses_frontmatter_priority() {
+        // Filename says p2, frontmatter says p0 -- rename should use p0
+        let (tmp, _) = setup_task("34001", "p0", "p2", "ready", "my-task");
+        rename_status(tmp.path(), "34001", "done").unwrap();
+
+        let task = find_task_by_id(tmp.path(), "34001").unwrap();
+        assert_eq!(
+            task.priority, "p0",
+            "rename_status used filename priority (p2) instead of frontmatter priority (p0)"
+        );
     }
 }

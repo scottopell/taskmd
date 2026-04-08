@@ -5,6 +5,7 @@ pub enum Error {
     Io(std::io::Error),
     NotFound(String),
     Conflict(String),
+    InvalidValue(String),
 }
 
 impl fmt::Display for Error {
@@ -13,6 +14,7 @@ impl fmt::Display for Error {
             Error::Io(e) => write!(f, "{e}"),
             Error::NotFound(s) => write!(f, "not found: {s}"),
             Error::Conflict(s) => write!(f, "conflict: {s}"),
+            Error::InvalidValue(s) => write!(f, "invalid value: {s}"),
         }
     }
 }

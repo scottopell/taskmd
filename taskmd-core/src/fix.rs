@@ -201,7 +201,6 @@ pub fn fix(tasks_dir: &Path) -> FixResult {
             }
             used_seqs.insert(seq);
             task_id = format!("{prefix}{seq:03}");
-            result.migrated += 1;
         }
 
         // ── Rename to match frontmatter ──────────────────────────────────────
@@ -221,6 +220,10 @@ pub fn fix(tasks_dir: &Path) -> FixResult {
                 continue;
             }
 
+            // Count migration only after the rename actually succeeds.
+            if task_id != task.id {
+                result.migrated += 1;
+            }
             result.renames.push((name, expected));
             result.renamed += 1;
         }
