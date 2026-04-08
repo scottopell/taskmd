@@ -5,7 +5,7 @@ use crate::constants::{VALID_FIELDS, VALID_PRIORITIES, VALID_STATUSES};
 use crate::filename::{format_filename, parse_filename};
 use crate::frontmatter::{has_valid_frontmatter, parse_frontmatter_str, FRONTMATTER_OPEN};
 use crate::tasks::task_files;
-use crate::util::is_valid_date;
+use crate::util::{is_valid_date, normalize_line_endings};
 
 pub struct ValidationResult {
     pub errors: Vec<String>,
@@ -48,7 +48,7 @@ pub fn validate(tasks_dir: &Path) -> ValidationResult {
             .to_string();
 
         let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
+            Ok(c) => normalize_line_endings(&c).into_owned(),
             Err(e) => {
                 result.errors.push(format!("{name}: cannot read: {e}"));
                 continue;

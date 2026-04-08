@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::error::Error;
 use crate::filename::{format_filename, parse_filename};
 use crate::frontmatter::{parse_frontmatter_file, FRONTMATTER_OPEN};
+use crate::util::normalize_line_endings;
 
 /// A parsed task file (filename + frontmatter combined).
 #[derive(Debug, Clone)]
@@ -90,6 +91,8 @@ pub fn find_task_by_id(tasks_dir: &Path, id: &str) -> Option<TaskFile> {
 /// Replaces the `status: <old>` line inside the `---` delimiters.
 /// Returns the content unchanged if no `status:` line is found.
 pub fn update_status_in_content(content: &str, new_status: &str) -> String {
+    let content = normalize_line_endings(content);
+
     if !content.starts_with(FRONTMATTER_OPEN) {
         return content.to_string();
     }

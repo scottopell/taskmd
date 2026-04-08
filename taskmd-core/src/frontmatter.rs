@@ -12,15 +12,11 @@ const FRONTMATTER_CLOSE: &str = "\n---\n";
 /// Splits on the first `:` so values containing colons are handled correctly,
 /// matching the Python `line.partition(":")` behaviour.
 ///
-/// CRLF line endings are normalised to LF before parsing so that files
-/// created on Windows (or by editors that save CRLF) are handled correctly.
+/// Callers that read from disk should normalise CRLF before calling this
+/// (see [`crate::util::normalize_line_endings`]).  As a safety net, this
+/// function also normalises internally.
 pub fn parse_frontmatter_str(content: &str) -> HashMap<String, String> {
-    // Normalise CRLF -> LF. Cow avoids allocation when there are no \r\n.
-    let content = if content.contains("\r\n") {
-        std::borrow::Cow::Owned(content.replace("\r\n", "\n"))
-    } else {
-        std::borrow::Cow::Borrowed(content)
-    };
+    let content = crate::util::normalize_line_endings(content);
 
     let mut fields = HashMap::new();
 
@@ -58,11 +54,7 @@ pub fn parse_frontmatter_file(path: &Path) -> std::io::Result<HashMap<String, St
 /// (starts with `---\n` and contains a closing `\n---\n`).
 /// Handles both LF and CRLF line endings.
 pub fn has_valid_frontmatter(content: &str) -> bool {
-    let content = if content.contains("\r\n") {
-        std::borrow::Cow::Owned(content.replace("\r\n", "\n"))
-    } else {
-        std::borrow::Cow::Borrowed(content)
-    };
+    let content = crate::util::normalize_line_endings(content);
     content.starts_with(FRONTMATTER_OPEN)
         && content[FRONTMATTER_OPEN.len()..].contains(FRONTMATTER_CLOSE)
 }

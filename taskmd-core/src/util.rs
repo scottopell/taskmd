@@ -1,3 +1,18 @@
+use std::borrow::Cow;
+
+/// Normalise CRLF line endings to LF.
+///
+/// Returns a borrowed reference when no `\r\n` is present (zero-cost),
+/// or an owned copy with `\r\n` replaced otherwise. Call this at the
+/// file-read boundary so all downstream code can assume LF.
+pub fn normalize_line_endings(s: &str) -> Cow<'_, str> {
+    if s.contains("\r\n") {
+        Cow::Owned(s.replace("\r\n", "\n"))
+    } else {
+        Cow::Borrowed(s)
+    }
+}
+
 /// Validate a date string has the format YYYY-MM-DD (no calendar correctness check).
 pub fn is_valid_date(s: &str) -> bool {
     if s.len() != 10 {

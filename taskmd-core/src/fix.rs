@@ -6,7 +6,7 @@ use regex::Regex;
 use crate::date::infer_created_date;
 use crate::filename::format_filename;
 use crate::ids::{needs_migration, parse_id_parts, prefix_for};
-use crate::util::is_valid_date;
+use crate::util::{is_valid_date, normalize_line_endings};
 use crate::tasks::{parse_task_file, task_files};
 
 /// Maximum sequence number that fits in the 3-digit NNN suffix.
@@ -133,7 +133,7 @@ pub fn fix(tasks_dir: &Path) -> FixResult {
         if needs_patch {
             let created = infer_created_date(&task.path);
             let mut content = match std::fs::read_to_string(&task.path) {
-                Ok(c) => c,
+                Ok(c) => normalize_line_endings(&c).into_owned(),
                 Err(e) => {
                     result.errors.push(format!("{name}: cannot read: {e}"));
                     continue;
