@@ -115,21 +115,9 @@ pub fn parse_id_parts(task_id: &str) -> (String, u32) {
     }
 }
 
-/// Return the next available task ID for this tasks directory.
-///
-/// Scans all existing files (any prefix format), takes the highest sequence
-/// number, and increments by 1. If the sequence overflows 999, D2 is
-/// incremented (mod 10) and the sequence resets to 001.
-pub fn next_id(tasks_dir: &Path) -> String {
-    let d1 = machine_digit(std::env::var("TASKMD_MACHINE_ID").ok().as_deref());
-    let d2 = dir_digit(tasks_dir);
-
-    if !tasks_dir.exists() {
-        return format!("{d1}{d2}001");
-    }
-
-    let mut max_seq: u32 = 0;
-
+/// Collect the set of sequence numbers used by tasks with a given prefix.
+fn used_sequences(tasks_dir: &Path, prefix: &str) -> std::collections::HashSet<u32> {
+    let mut seqs = std::collections::HashSet::new();
     for path in crate::tasks::task_files(tasks_dir).unwrap_or_default() {
         let name = path
             .file_name()
@@ -137,18 +125,46 @@ pub fn next_id(tasks_dir: &Path) -> String {
             .to_string_lossy()
             .to_string();
         if let Some((id, _, _, _)) = crate::filename::parse_filename(&name) {
-            let (_, seq) = parse_id_parts(&id);
-            max_seq = max_seq.max(seq);
+            let (pfx, seq) = parse_id_parts(&id);
+            if pfx == prefix {
+                seqs.insert(seq);
+            }
         }
     }
+    seqs
+}
+
+/// Return the next available task ID for this tasks directory.
+///
+/// Only considers tasks whose prefix matches the local prefix when
+/// computing the next sequence number. If the local prefix overflows
+/// (seq > 999), D2 is bumped and sequences in the new prefix space are
+/// checked to avoid collisions.
+pub fn next_id(tasks_dir: &Path) -> String {
+    let d1 = machine_digit(std::env::var("TASKMD_MACHINE_ID").ok().as_deref());
+    let d2 = dir_digit(tasks_dir);
+    let prefix = format!("{d1}{d2}");
+
+    if !tasks_dir.exists() {
+        return format!("{prefix}001");
+    }
+
+    let local_seqs = used_sequences(tasks_dir, &prefix);
+    let max_seq = local_seqs.iter().copied().max().unwrap_or(0);
 
     let next = max_seq + 1;
     if next > MAX_SEQ {
-        // Overflow: bump D2 and reset sequence
+        // Overflow: bump D2 and find the first unused sequence in the new space.
         let d2_next = (d2 + 1) % 10;
-        format!("{d1}{d2_next}001")
+        let overflow_prefix = format!("{d1}{d2_next}");
+        let overflow_seqs = used_sequences(tasks_dir, &overflow_prefix);
+        let mut seq = 1u32;
+        while overflow_seqs.contains(&seq) && seq <= MAX_SEQ {
+            seq += 1;
+        }
+        format!("{overflow_prefix}{seq:03}")
     } else {
-        format!("{d1}{d2}{next:03}")
+        format!("{prefix}{next:03}")
     }
 }
 
@@ -299,5 +315,102 @@ mod tests {
         let d2_next = (d2 + 1) % 10;
         let id = format!("{d1}{d2_next}001");
         assert_eq!(id, "30001");
+    }
+
+    /// Helper: write a minimal task file with a given ID into a directory.
+    fn write_task_file(dir: &Path, id: &str) {
+        let filename = format!("{id}-p2-ready--test.md");
+        let content = format!(
+            "---\ncreated: 2026-01-01\npriority: p2\nstatus: ready\n---\n"
+        );
+        std::fs::write(dir.join(filename), content).unwrap();
+    }
+
+    // -- Bug 4: next_id should scope sequence scan to local prefix --
+
+    #[test]
+    fn next_id_ignores_foreign_prefix_sequences() {
+        // Create a dir, determine its local prefix, then add a task with a
+        // foreign prefix that has a high sequence number. next_id should NOT
+        // jump past the foreign sequence.
+        let tmp = tempfile::tempdir().unwrap();
+        let local_prefix = prefix_for(tmp.path());
+
+        // Pick a foreign prefix that differs from local
+        let foreign_prefix = if local_prefix == "99" {
+            "00".to_string()
+        } else {
+            format!("{:02}", local_prefix.parse::<u32>().unwrap() + 1)
+        };
+
+        // Write a foreign-prefix task with high sequence
+        write_task_file(tmp.path(), &format!("{foreign_prefix}900"));
+        // Write a local-prefix task with low sequence
+        write_task_file(tmp.path(), &format!("{local_prefix}005"));
+
+        let id = next_id(tmp.path());
+        let (pfx, seq) = parse_id_parts(&id);
+        assert_eq!(pfx, local_prefix);
+        // Should be 006 (next after local max of 005), NOT 901
+        assert_eq!(
+            seq, 6,
+            "next_id returned {id} (seq {seq}), expected seq 6 — \
+             it should ignore foreign prefix {foreign_prefix}900"
+        );
+    }
+
+    #[test]
+    fn next_id_starts_at_001_with_only_foreign_tasks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let local_prefix = prefix_for(tmp.path());
+
+        let foreign_prefix = if local_prefix == "99" {
+            "00".to_string()
+        } else {
+            format!("{:02}", local_prefix.parse::<u32>().unwrap() + 1)
+        };
+
+        // Only foreign-prefix tasks exist
+        write_task_file(tmp.path(), &format!("{foreign_prefix}500"));
+        write_task_file(tmp.path(), &format!("{foreign_prefix}501"));
+
+        let id = next_id(tmp.path());
+        let (pfx, seq) = parse_id_parts(&id);
+        assert_eq!(pfx, local_prefix);
+        assert_eq!(
+            seq, 1,
+            "next_id returned {id} (seq {seq}), expected seq 1 — \
+             no local-prefix tasks exist"
+        );
+    }
+
+    // -- Bug 5: overflow should check target prefix space for collisions --
+
+    #[test]
+    fn next_id_overflow_avoids_collision() {
+        // Simulate: local prefix is full (seq 999), and the bumped prefix
+        // already has tasks. next_id should skip occupied sequences.
+        let tmp = tempfile::tempdir().unwrap();
+        let local_prefix = prefix_for(tmp.path());
+        let d1: usize = local_prefix[..1].parse().unwrap();
+        let d2: usize = local_prefix[1..2].parse().unwrap();
+        let d2_next = (d2 + 1) % 10;
+        let overflow_prefix = format!("{d1}{d2_next}");
+
+        // Fill local prefix to 999
+        write_task_file(tmp.path(), &format!("{local_prefix}999"));
+        // Put tasks in the overflow prefix space
+        write_task_file(tmp.path(), &format!("{overflow_prefix}001"));
+        write_task_file(tmp.path(), &format!("{overflow_prefix}002"));
+
+        let id = next_id(tmp.path());
+        let (pfx, seq) = parse_id_parts(&id);
+        assert_eq!(pfx, overflow_prefix);
+        // Should skip 001 and 002 which are occupied
+        assert_eq!(
+            seq, 3,
+            "next_id returned {id} (seq {seq}), expected seq 3 — \
+             overflow prefix {overflow_prefix} already has 001 and 002"
+        );
     }
 }
