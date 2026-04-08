@@ -22,7 +22,7 @@ static CREATED_RE: LazyLock<Regex> =
 /// This is the single canonical implementation; the Python `FixResult.summary()`
 /// delegates here via the `_core.fix_summary` binding.
 pub fn fix_summary(patched: usize, renamed: usize, migrated: usize) -> String {
-    if patched == 0 && renamed == 0 {
+    if patched == 0 && renamed == 0 && migrated == 0 {
         return "All files already correct".to_string();
     }
     let mut parts: Vec<String> = vec![];
@@ -140,10 +140,19 @@ pub fn fix(tasks_dir: &Path) -> FixResult {
                 }
             };
 
-            if CREATED_RE.is_match(&content) {
-                content = CREATED_RE
-                    .replacen(&content, 1, format!("created: {created}").as_str())
+            // Only match `created:` inside the frontmatter block (between
+            // the opening `---\n` and the closing `\n---\n`), not in the body.
+            let fm_end = content[4..].find("\n---\n").map(|p| p + 4);
+            let has_created_in_fm = fm_end
+                .map(|end| CREATED_RE.is_match(&content[..end]))
+                .unwrap_or(false);
+
+            if has_created_in_fm {
+                let end = fm_end.unwrap();
+                let replaced = CREATED_RE
+                    .replacen(&content[..end], 1, format!("created: {created}").as_str())
                     .into_owned();
+                content = format!("{replaced}{}", &content[end..]);
             } else {
                 content = content.replacen("---\n", &format!("---\ncreated: {created}\n"), 1);
             }

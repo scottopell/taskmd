@@ -74,6 +74,10 @@ pub fn derive_slug(title: &str) -> String {
         }
     }
 
+    if slug.is_empty() {
+        slug.push_str("untitled");
+    }
+
     slug
 }
 

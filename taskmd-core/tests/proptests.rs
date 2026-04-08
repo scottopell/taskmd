@@ -12,7 +12,8 @@ use tempfile::TempDir;
 
 use taskmd_core::constants::{VALID_PRIORITIES, VALID_STATUSES};
 use taskmd_core::filename::{derive_slug, format_filename, parse_filename, MAX_SLUG_LEN};
-use taskmd_core::fix::fix;
+use taskmd_core::fix::{fix, fix_summary};
+use taskmd_core::frontmatter::parse_frontmatter_str;
 use taskmd_core::ids::next_id;
 use taskmd_core::tasks::{parse_task_file, task_files};
 use taskmd_core::validate::validate;
@@ -487,7 +488,7 @@ proptest! {
         for id in &ids_before {
             prop_assert!(
                 after_set.contains(id),
-                "fix changed task ID {id} — IDs after fix: {ids_after:?}"
+                "fix changed task ID {} — IDs after fix: {:?}", id, ids_after
             );
         }
     }
@@ -523,6 +524,209 @@ proptest! {
         prop_assert_eq!(r2.renamed, 0, "second fix renamed files");
         prop_assert_eq!(r2.migrated, 0, "second fix migrated files");
         prop_assert!(r2.ok(), "second fix had errors: {:?}", r2.errors);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P28: Fix never modifies body content (bug 1 -- CREATED_RE outside frontmatter)
+//
+// The body (everything after the closing `---`) must be byte-identical before
+// and after `fix`. The bug: when frontmatter lacks `created:` but the body
+// has a line starting with `created:`, fix replaces the body line instead of
+// injecting into frontmatter.
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    #[test]
+    fn fix_never_modifies_body(
+        id in arb_task_id(),
+        pri in arb_priority(),
+        sta in arb_status(),
+        slug in arb_slug(),
+        body_prefix in "[a-zA-Z ]{0,20}",
+        body_suffix in "[a-zA-Z ]{0,20}",
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let filename = format_filename(&id, &pri, &sta, &slug);
+
+        // Frontmatter deliberately OMITS `created:`. Body contains "created:".
+        let body = format!("{body_prefix}created: yesterday by the team{body_suffix}");
+        let content = format!(
+            "---\npriority: {pri}\nstatus: {sta}\nartifact: src/{slug}.py\n---\n\n{body}\n"
+        );
+        fs::write(tmp.path().join(&filename), &content).unwrap();
+
+        // Extract body before fix
+        let body_before = content
+            .match_indices("\n---\n")
+            .next()
+            .map(|(pos, _)| &content[pos + 5..])
+            .unwrap_or("")
+            .to_string();
+
+        fix(tmp.path());
+
+        // After fix the file may have been renamed -- find the surviving file
+        let files = task_files(tmp.path()).unwrap();
+        prop_assert_eq!(files.len(), 1);
+        let content_after = fs::read_to_string(&files[0]).unwrap();
+        let body_after = content_after
+            .match_indices("\n---\n")
+            .next()
+            .map(|(pos, _)| &content_after[pos + 5..])
+            .unwrap_or("")
+            .to_string();
+
+        prop_assert_eq!(
+            body_before, body_after,
+            "fix modified body content"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P29: fix_summary "all correct" iff all counts are zero (bug 2)
+//
+// fix_summary is a pure function. It must report "All files already correct"
+// if and only if all three counters (patched, renamed, migrated) are zero.
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #[test]
+    fn fix_summary_all_correct_iff_all_zero(
+        patched in 0..10usize,
+        renamed in 0..10usize,
+        migrated in 0..10usize,
+    ) {
+        let summary = fix_summary(patched, renamed, migrated);
+        let all_zero = patched == 0 && renamed == 0 && migrated == 0;
+        prop_assert_eq!(
+            summary == "All files already correct",
+            all_zero,
+            "fix_summary({}, {}, {}) = {:?}",
+            patched, renamed, migrated, summary
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P30: fix migrated count never exceeds renamed count (bug 3)
+//
+// Every migration changes the task ID, which changes the filename, so a
+// migration always implies a rename. result.migrated must be <= result.renamed.
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    #[test]
+    fn fix_migrated_le_renamed(
+        params in prop::collection::vec(arb_task_params(), 1..=4)
+            .prop_filter("unique ids", |v| {
+                let ids: HashSet<_> = v.iter().map(|(id, _, _, _)| id.clone()).collect();
+                ids.len() == v.len()
+            })
+    ) {
+        let (tmp, _) = make_task_dir(&params);
+        let result = fix(tmp.path());
+        prop_assert!(
+            result.migrated <= result.renamed,
+            "migrated ({}) > renamed ({})",
+            result.migrated, result.renamed
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P31: next_id never collides with existing files (bugs 4+5)
+//
+// For any set of existing tasks (with any mix of prefixes), next_id must
+// return an ID that does not match any existing task's ID. This is the
+// user-facing invariant and catches both the global-max-sequence waste and
+// the overflow-into-occupied-space problems.
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    #[test]
+    fn next_id_never_collides(
+        params in prop::collection::vec(arb_task_params(), 1..=6)
+            .prop_filter("unique ids", |v| {
+                let ids: HashSet<_> = v.iter().map(|(id, _, _, _)| id.clone()).collect();
+                ids.len() == v.len()
+            })
+    ) {
+        let (tmp, _) = make_task_dir(&params);
+        let new_id = next_id(tmp.path());
+
+        // Collect all existing IDs
+        let existing_ids: HashSet<String> = task_files(tmp.path())
+            .unwrap()
+            .iter()
+            .filter_map(|p| {
+                let name = p.file_name()?.to_string_lossy().to_string();
+                let (id, _, _, _) = parse_filename(&name)?;
+                Some(id)
+            })
+            .collect();
+
+        prop_assert!(
+            !existing_ids.contains(&new_id),
+            "next_id returned {} which already exists: {:?}", new_id, existing_ids
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P32: derive_slug never returns empty string (bug 7)
+//
+// An empty slug produces an unparseable filename via format_filename. Any
+// title with at least one ASCII alphanumeric character must yield a non-empty
+// slug. Titles with no ASCII alphanumeric content should get a fallback.
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #[test]
+    fn derive_slug_never_empty(title in ".{1,80}") {
+        let slug = derive_slug(&title);
+        // If the title has any ASCII alphanumeric char, the slug must be non-empty.
+        // If it doesn't, the slug should still be non-empty (fallback).
+        prop_assert!(
+            !slug.is_empty(),
+            "derive_slug({:?}) returned empty string", title
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P33: CRLF frontmatter parses identically to LF (bug 8)
+//
+// parse_frontmatter_str must produce the same fields whether the input uses
+// LF or CRLF line endings. This catches the hardcoded "\n" delimiters.
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #[test]
+    fn crlf_frontmatter_parses_same_as_lf(
+        pri in arb_priority(),
+        sta in arb_status(),
+        slug in arb_slug(),
+    ) {
+        let lf_content = format!(
+            "---\ncreated: 2026-01-01\npriority: {pri}\nstatus: {sta}\nartifact: src/{slug}.py\n---\n\nBody\n"
+        );
+        let crlf_content = lf_content.replace('\n', "\r\n");
+
+        let lf_fields = parse_frontmatter_str(&lf_content);
+        let crlf_fields = parse_frontmatter_str(&crlf_content);
+
+        prop_assert_eq!(
+            lf_fields, crlf_fields,
+            "CRLF parse differs from LF parse"
+        );
     }
 }
 

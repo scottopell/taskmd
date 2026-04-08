@@ -5,3 +5,5 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 65272c3b7ee368a1891a2a9dc4b1c65da3ed00f4ac6ba8ea3412865b134899fc # shrinks to params = [("10001", "p0", "blocked", "a")]
+cc 87ec5aea85623526c5c7a5ac0dd9d19627a65ec212f24a4723f8d2e76a697d36 # shrinks to patched = 0, renamed = 0, migrated = 1
+cc a7053d20d33e241f58b0bb6a31c222bf2ba2e0ee96ff68bf356f9a8f5b83565b # shrinks to title = " "
