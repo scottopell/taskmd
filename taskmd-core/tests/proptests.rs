@@ -440,6 +440,93 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
+// P26: Fix preserves valid numeric IDs (issue #6)
+//
+// A task whose ID is already in the 5-digit DDNNN format must keep that exact
+// ID after `fix`, regardless of whether the prefix matches the current
+// directory. The prefix encodes where the task was *created*; `fix` must not
+// overwrite it with the local directory's prefix.
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    #[test]
+    fn fix_preserves_valid_numeric_ids(
+        params in prop::collection::vec(arb_task_params(), 1..=4)
+            .prop_filter("unique ids", |v| {
+                let ids: HashSet<_> = v.iter().map(|(id, _, _, _)| id.clone()).collect();
+                ids.len() == v.len()
+            })
+    ) {
+        let (tmp, _original_ids) = make_task_dir(&params);
+
+        // Record the IDs present before fix
+        let ids_before: Vec<String> = task_files(tmp.path())
+            .unwrap()
+            .iter()
+            .filter_map(|p| parse_task_file(p))
+            .map(|t| t.id.clone())
+            .collect();
+
+        fix(tmp.path());
+
+        // Collect IDs after fix
+        let ids_after: Vec<String> = task_files(tmp.path())
+            .unwrap()
+            .iter()
+            .filter_map(|p| {
+                let name = p.file_name()?.to_string_lossy().to_string();
+                let (id, _, _, _) = parse_filename(&name)?;
+                Some(id)
+            })
+            .collect();
+
+        // Every original ID must appear unchanged after fix
+        let after_set: HashSet<_> = ids_after.iter().collect();
+        for id in &ids_before {
+            prop_assert!(
+                after_set.contains(id),
+                "fix changed task ID {id} — IDs after fix: {ids_after:?}"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P27: Fix idempotency across directories (issue #6)
+//
+// Running fix twice in the same directory must be a no-op the second time:
+// zero renames, zero patches, zero migrations. This catches cases where fix
+// generates unstable filenames.
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    #[test]
+    fn fix_idempotency_no_migrations(
+        params in prop::collection::vec(arb_task_params(), 1..=4)
+            .prop_filter("unique ids", |v| {
+                let ids: HashSet<_> = v.iter().map(|(id, _, _, _)| id.clone()).collect();
+                ids.len() == v.len()
+            })
+    ) {
+        let (tmp, _) = make_task_dir(&params);
+
+        // First fix — may do work
+        fix(tmp.path());
+
+        // Second fix — must be a complete no-op
+        let r2 = fix(tmp.path());
+        prop_assert_eq!(r2.patched, 0, "second fix patched files");
+        prop_assert_eq!(r2.renamed, 0, "second fix renamed files");
+        prop_assert_eq!(r2.migrated, 0, "second fix migrated files");
+        prop_assert!(r2.ok(), "second fix had errors: {:?}", r2.errors);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // derive_slug properties
 // ---------------------------------------------------------------------------
 

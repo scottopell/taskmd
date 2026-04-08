@@ -78,18 +78,24 @@ pub fn is_legacy_id(task_id: &str) -> bool {
     task_id.len() == 4 && task_id.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// True if a task ID needs migration to the current prefix.
+/// True if a task ID needs migration to the current numeric format.
 ///
-/// Covers all three old formats:
+/// Covers legacy formats only:
 /// - Legacy 4-digit NNNN (e.g. "0042")
 /// - Old alpha-prefix AANNN (e.g. "YF042")
-/// - Numeric prefix that doesn't match expected (e.g. "34042" when expected is "21")
-pub fn needs_migration(task_id: &str, expected_prefix: &str) -> bool {
+///
+/// A 5-digit all-numeric ID (e.g. "34042") is already in the current format
+/// and is NEVER migrated, even if its prefix differs from the local directory.
+/// The prefix encodes the directory where the task was created; changing it
+/// would destroy cross-worktree identity (see issue #6).
+pub fn needs_migration(task_id: &str, _expected_prefix: &str) -> bool {
     if is_legacy_id(task_id) {
         return true;
     }
     if task_id.len() >= 5 {
-        return &task_id[..2] != expected_prefix;
+        // Alpha-prefix (e.g. "YF042") needs migration; numeric prefix does not.
+        let first_two = &task_id[..2];
+        return !first_two.bytes().all(|b| b.is_ascii_digit());
     }
     // Unrecognized format -- don't migrate
     false
@@ -171,8 +177,9 @@ mod tests {
     }
 
     #[test]
-    fn needs_migration_wrong_numeric_prefix() {
-        assert!(needs_migration("21042", "34"));
+    fn needs_migration_different_numeric_prefix_is_not_migrated() {
+        // Issue #6: a valid numeric prefix from another worktree must NOT be migrated
+        assert!(!needs_migration("21042", "34"));
     }
 
     #[test]
