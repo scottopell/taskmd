@@ -14,14 +14,14 @@ fn task_to_dict<'py>(
     py: Python<'py>,
     task: tasks::TaskFile,
 ) -> PyResult<pyo3::Bound<'py, PyDict>> {
-    let dict = PyDict::new_bound(py);
+    let dict = PyDict::new(py);
     dict.set_item("path", task.path.to_string_lossy().as_ref())?;
     dict.set_item("id", &task.id)?;
     dict.set_item("priority", &task.priority)?;
     dict.set_item("status", &task.status)?;
     dict.set_item("slug", &task.slug)?;
 
-    let fields_dict = PyDict::new_bound(py);
+    let fields_dict = PyDict::new(py);
     for (k, v) in &task.fields {
         fields_dict.set_item(k, v)?;
     }
@@ -85,7 +85,7 @@ fn parse_frontmatter(content: &str) -> std::collections::HashMap<String, String>
 // ── Task file operations ──────────────────────────────────────────────────────
 
 #[pyfunction]
-fn parse_task_file(py: Python<'_>, path: &str) -> PyResult<Option<PyObject>> {
+fn parse_task_file(py: Python<'_>, path: &str) -> PyResult<Option<Py<PyAny>>> {
     match tasks::parse_task_file(Path::new(path)) {
         None => Ok(None),
         Some(task) => Ok(Some(task_to_dict(py, task)?.into_any().unbind())),
@@ -93,7 +93,7 @@ fn parse_task_file(py: Python<'_>, path: &str) -> PyResult<Option<PyObject>> {
 }
 
 #[pyfunction]
-fn list_tasks(py: Python<'_>, tasks_dir: &str) -> PyResult<Vec<PyObject>> {
+fn list_tasks(py: Python<'_>, tasks_dir: &str) -> PyResult<Vec<Py<PyAny>>> {
     taskmd_core::tasks::list_tasks(Path::new(tasks_dir))
         .into_iter()
         .map(|t| task_to_dict(py, t).map(|d| d.into_any().unbind()))
@@ -101,7 +101,7 @@ fn list_tasks(py: Python<'_>, tasks_dir: &str) -> PyResult<Vec<PyObject>> {
 }
 
 #[pyfunction]
-fn find_task_by_id(py: Python<'_>, tasks_dir: &str, id: &str) -> PyResult<Option<PyObject>> {
+fn find_task_by_id(py: Python<'_>, tasks_dir: &str, id: &str) -> PyResult<Option<Py<PyAny>>> {
     match tasks::find_task_by_id(Path::new(tasks_dir), id) {
         None => Ok(None),
         Some(task) => Ok(Some(task_to_dict(py, task)?.into_any().unbind())),
@@ -117,9 +117,9 @@ fn rename_status(tasks_dir: &str, id: &str, new_status: &str) -> PyResult<(Strin
 // ── Validate ─────────────────────────────────────────────────────────────────
 
 #[pyfunction]
-fn validate(py: Python<'_>, tasks_dir: &str) -> PyResult<PyObject> {
+fn validate(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
     let r = vld::validate(Path::new(tasks_dir));
-    let dict = PyDict::new_bound(py);
+    let dict = PyDict::new(py);
     dict.set_item("errors", r.errors)?;
     dict.set_item("file_count", r.file_count)?;
     Ok(dict.into_any().unbind())
@@ -135,9 +135,9 @@ fn fix_summary(patched: usize, renamed: usize, migrated: usize) -> String {
 }
 
 #[pyfunction]
-fn do_fix(py: Python<'_>, tasks_dir: &str) -> PyResult<PyObject> {
+fn do_fix(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
     let r = fix::fix(Path::new(tasks_dir));
-    let dict = PyDict::new_bound(py);
+    let dict = PyDict::new(py);
     dict.set_item("patched", r.patched)?;
     dict.set_item("renamed", r.renamed)?;
     dict.set_item("migrated", r.migrated)?;
@@ -150,9 +150,9 @@ fn do_fix(py: Python<'_>, tasks_dir: &str) -> PyResult<PyObject> {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 #[pyfunction]
-fn do_init(py: Python<'_>, tasks_dir: &str) -> PyResult<PyObject> {
+fn do_init(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
     let r = init::init(Path::new(tasks_dir));
-    let dict = PyDict::new_bound(py);
+    let dict = PyDict::new(py);
     dict.set_item("tasks_dir", r.tasks_dir.to_string_lossy().as_ref())?;
     dict.set_item("created", r.created)?;
     dict.set_item("template_fields", r.template_fields)?;

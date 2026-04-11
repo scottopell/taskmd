@@ -11,4 +11,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 taskmd-core = { path = "../taskmd-core" }
-pyo3 = { version = "0.22", features = ["extension-module"] }
+pyo3 = { version = "0.28", features = ["extension-module"] }
