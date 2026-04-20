@@ -73,3 +73,19 @@ class InitDict(TypedDict):
     error: Optional[str]
 
 def do_init(tasks_dir: str) -> InitDict: ...
+
+# ── Create ────────────────────────────────────────────────────────────────────
+
+class CreateDict(TypedDict):
+    id: str
+    path: str
+    filename: str
+
+def do_create(
+    tasks_dir: str,
+    priority: str,
+    status: str,
+    slug: str,
+    artifact: str,
+    body: str,
+) -> CreateDict: ...

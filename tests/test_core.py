@@ -16,6 +16,7 @@ from taskmd.core import (
     _needs_migration,
     _parse_id_parts,
     _prefix_for,
+    create_task,
     fix,
     get_expected_filename,
     init,
@@ -104,9 +105,12 @@ class TestIdHelpers:
         assert _needs_migration("0042", "34")
         # Alpha prefix always needs migration
         assert _needs_migration("YF042", "34")
-        # Wrong numeric prefix needs migration
-        assert _needs_migration("21042", "34")
-        # Correct prefix does not
+        # A valid numeric prefix from another worktree must NOT be migrated —
+        # the prefix encodes where the task was created; rewriting it would
+        # destroy cross-worktree identity (see issue #6 and the Rust test
+        # `needs_migration_different_numeric_prefix_is_not_migrated`).
+        assert not _needs_migration("21042", "34")
+        # Correct prefix does not need migration
         assert not _needs_migration("34042", "34")
 
 
@@ -421,18 +425,23 @@ class TestNextId:
         make_task(tmp_path, prefix + "100", "p2", "ready", "b")
         assert next_id(tmp_path) == prefix + "101"  # max + 1, not fill gaps
 
-    def test_considers_legacy_files(self, tmp_path):
-        """next_id accounts for legacy files that will be migrated."""
+    def test_ignores_legacy_files_when_allocating(self, tmp_path):
+        """next_id is scoped to the local prefix; legacy files (empty prefix)
+        do not inflate the local sequence. Any migration-time collision is
+        resolved by `fix`, which bumps the migrated seq within the local
+        prefix space until a free slot is found."""
         prefix = _prefix_for(tmp_path)
         make_legacy_task(tmp_path, 50, "p2", "ready", "old")
-        assert next_id(tmp_path) == prefix + "051"
+        assert next_id(tmp_path) == prefix + "001"
 
-    def test_counts_all_prefixes(self, tmp_path):
-        """next_id counts sequences across all prefixes (files converge after fix)."""
+    def test_ignores_foreign_prefix_sequences(self, tmp_path):
+        """next_id scopes to the local prefix so allocations in foreign
+        partitions (different machine or worktree) don't inflate the local
+        counter. Mirrors the Rust test `next_id_ignores_foreign_prefix_sequences`."""
         prefix = _prefix_for(tmp_path)
-        # Create a task with a different (alpha) prefix
+        # Foreign alpha-prefix task — should not count toward local prefix
         make_task(tmp_path, "ZQ500", "p2", "ready", "other")
-        assert next_id(tmp_path) == prefix + "501"
+        assert next_id(tmp_path) == prefix + "001"
 
     def test_different_dirs_yield_different_ids(self, tmp_path):
         a = tmp_path / "a"
@@ -490,3 +499,64 @@ class TestInit:
         result = init(tasks_dir)
         assert result.ok
         assert tasks_dir.is_dir()
+
+
+# ---------------------------------------------------------------------------
+# create_task  (the atomic new-task primitive — Python-level smoke tests;
+# exhaustive behaviour is covered in taskmd-core/src/create.rs)
+# ---------------------------------------------------------------------------
+
+class TestCreateTask:
+    def test_creates_file_with_frontmatter_and_default_body(self, tmp_path):
+        result = create_task(tmp_path, slug="fix-login", artifact="src/auth.py")
+        assert result.path.exists()
+        assert result.filename.endswith("-p2-ready--fix-login.md")
+        content = result.path.read_text(encoding="utf-8")
+        assert "priority: p2" in content
+        assert "status: ready" in content
+        assert "artifact: src/auth.py" in content
+        assert "## Summary" in content  # default skeleton body
+
+    def test_custom_body_is_used(self, tmp_path):
+        result = create_task(
+            tmp_path, slug="x", artifact="src/x.py", body="Custom body line."
+        )
+        assert "Custom body line." in result.path.read_text(encoding="utf-8")
+
+    def test_priority_and_status_overrides(self, tmp_path):
+        result = create_task(
+            tmp_path, slug="x", artifact="src/x.py", priority="p0", status="in-progress"
+        )
+        assert "-p0-in-progress--x.md" in result.filename
+
+    def test_dirty_slug_is_normalized(self, tmp_path):
+        result = create_task(tmp_path, slug="Add OAuth2!", artifact="src/x.py")
+        assert "--add-oauth2.md" in result.filename
+
+    def test_sequential_creates_are_monotonic(self, tmp_path):
+        a = create_task(tmp_path, slug="a", artifact="src/a.py")
+        b = create_task(tmp_path, slug="b", artifact="src/b.py")
+        assert int(a.id[2:]) + 1 == int(b.id[2:])
+
+    def test_result_file_validates_clean(self, tmp_path):
+        create_task(tmp_path, slug="clean", artifact="src/clean.py")
+        assert validate(tmp_path).ok
+
+    def test_missing_tasks_dir_raises(self, tmp_path):
+        missing = tmp_path / "nope"
+        with pytest.raises(RuntimeError):
+            create_task(missing, slug="x", artifact="src/x.py")
+
+    def test_invalid_priority_raises(self, tmp_path):
+        with pytest.raises(RuntimeError):
+            create_task(tmp_path, slug="x", artifact="src/x.py", priority="p9")
+
+    def test_body_with_frontmatter_raises(self, tmp_path):
+        with pytest.raises(RuntimeError):
+            create_task(
+                tmp_path, slug="x", artifact="src/x.py", body="---\nstatus: ready\n---\nbody"
+            )
+
+    def test_empty_artifact_raises(self, tmp_path):
+        with pytest.raises(RuntimeError):
+            create_task(tmp_path, slug="x", artifact="   ")
