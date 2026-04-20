@@ -130,8 +130,8 @@ fn validate(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
 /// Canonical summary string for a fix result — single Rust implementation.
 /// Python's `FixResult.summary()` calls this rather than reimplementing.
 #[pyfunction]
-fn fix_summary(patched: usize, renamed: usize, migrated: usize) -> String {
-    fix::fix_summary(patched, renamed, migrated)
+fn fix_summary(patched: usize, renamed: usize, migrated: usize, renumbered: usize) -> String {
+    fix::fix_summary(patched, renamed, migrated, renumbered)
 }
 
 #[pyfunction]
@@ -143,6 +143,7 @@ fn do_fix(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
     dict.set_item("migrated", r.migrated)?;
     dict.set_item("patches", r.patches)?;
     dict.set_item("renames", r.renames)?;
+    dict.set_item("renumbered", r.renumbered)?;
     dict.set_item("errors", r.errors)?;
     Ok(dict.into_any().unbind())
 }

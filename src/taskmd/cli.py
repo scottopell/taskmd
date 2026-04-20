@@ -288,10 +288,20 @@ def main(argv: list[str] | None = None) -> None:
                         "migrated": result.migrated,
                         "patches": [{"file": f, "date": d} for f, d in result.patches],
                         "renames": [{"old": o, "new": n} for o, n in result.renames],
+                        "renumbered": [
+                            {
+                                "old_id": oid,
+                                "new_id": nid,
+                                "old_filename": old,
+                                "new_filename": new,
+                            }
+                            for oid, nid, old, new in result.renumbered
+                        ],
                     },
                     patched=result.patched,
                     renamed=result.renamed,
                     migrated=result.migrated,
+                    renumbered=len(result.renumbered),
                 ))
         else:
             if result.errors:
@@ -304,6 +314,13 @@ def main(argv: list[str] | None = None) -> None:
                     print(f"  {old} -> {new}")
                 if result.migrated:
                     print(f"  Note: {result.migrated} file(s) migrated to numeric ID format")
+                for old_id, new_id, old_name, new_name in result.renumbered:
+                    print(f"  renumbered: {old_id} -> {new_id} ({old_name} -> {new_name})")
+                if result.renumbered:
+                    print(
+                        "  Note: cross-references to old IDs are NOT rewritten; "
+                        "grep the mapping above."
+                    )
                 print(f"\u2713 {result.summary()}")
 
     elif command == "next":

@@ -52,7 +52,7 @@ def validate(tasks_dir: str) -> ValidateDict: ...
 
 # ── Fix ───────────────────────────────────────────────────────────────────────
 
-def fix_summary(patched: int, renamed: int, migrated: int) -> str: ...
+def fix_summary(patched: int, renamed: int, migrated: int, renumbered: int) -> str: ...
 
 class FixDict(TypedDict):
     patched: int
@@ -60,6 +60,8 @@ class FixDict(TypedDict):
     migrated: int
     patches: list[tuple[str, str]]
     renames: list[tuple[str, str]]
+    # Each tuple is (old_id, new_id, old_filename, new_filename).
+    renumbered: list[tuple[str, str, str, str]]
     errors: list[str]
 
 def do_fix(tasks_dir: str) -> FixDict: ...
