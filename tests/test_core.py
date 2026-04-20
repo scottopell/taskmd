@@ -22,6 +22,7 @@ from taskmd.core import (
     init,
     next_id,
     parse_task_file,
+    rename_status,
     validate,
 )
 
@@ -579,3 +580,168 @@ class TestCreateTask:
         for body in ("", "   ", "\n\n", "\t\n"):
             with pytest.raises(RuntimeError):
                 create_task(tmp_path, slug="x", artifact="src/x.py", body=body)
+
+
+# ---------------------------------------------------------------------------
+# rename_status  (Python-level smoke tests — Rust covers exhaustive behaviour)
+# ---------------------------------------------------------------------------
+
+class TestRenameStatus:
+    def test_updates_frontmatter_and_renames_file(self, tmp_path):
+        old = make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        old_name, new_name = rename_status(tmp_path, "34001", "in-progress")
+        assert old_name == old.name
+        assert new_name.endswith("-p2-in-progress--fix-login.md")
+        assert not old.exists()
+        new_path = tmp_path / new_name
+        assert new_path.exists()
+        content = new_path.read_text(encoding="utf-8")
+        assert "status: in-progress" in content
+        assert "status: ready" not in content
+
+    def test_happy_path_result_still_validates(self, tmp_path):
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        rename_status(tmp_path, "34001", "done")
+        assert validate(tmp_path).ok
+
+    def test_unknown_id_raises(self, tmp_path):
+        make_task(tmp_path, "34001", "p2", "ready", "slug")
+        with pytest.raises(RuntimeError, match="not found"):
+            rename_status(tmp_path, "34999", "done")
+
+    def test_invalid_status_raises(self, tmp_path):
+        make_task(tmp_path, "34001", "p2", "ready", "slug")
+        with pytest.raises(RuntimeError, match="invalid status"):
+            rename_status(tmp_path, "34001", "pending")
+
+    def test_conflict_when_target_exists(self, tmp_path):
+        # Stage a bare file at the exact target path of a rename. The listing
+        # order (alphabetical) means this stub sorts BEFORE the real task, so
+        # find_task_by_id picks the stub and its rename target collides with
+        # the real task file at the "ready" status path. Core must refuse.
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        (tmp_path / "34001-p2-in-progress--fix-login.md").write_text("stub")
+        with pytest.raises(RuntimeError, match="target already exists"):
+            rename_status(tmp_path, "34001", "ready")
+
+
+# ---------------------------------------------------------------------------
+# CLI: taskmd status  (end-to-end via main())
+# ---------------------------------------------------------------------------
+
+def _unset_agent_env(monkeypatch):
+    """Clear any agent-detection env vars so human-mode tests see human output."""
+    for v in (
+        "CLAUDECODE", "CLAUDE_CODE", "CURSOR_AGENT", "CODEX", "OPENAI_CODEX",
+        "OPENCODE", "AIDER", "CLINE", "WINDSURF_AGENT", "GITHUB_COPILOT",
+        "AMAZON_Q", "AWS_Q_DEVELOPER", "GEMINI_CODE_ASSIST", "SRC_CODY",
+        "AGENT", "FORCE_AGENT_MODE",
+    ):
+        monkeypatch.delenv(v, raising=False)
+
+
+class TestCliStatus:
+    def test_human_happy_path(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        main(["status", "34001", "in-progress", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "-p2-ready--fix-login.md -> " in out
+        assert "-p2-in-progress--fix-login.md" in out
+        assert (tmp_path / "34001-p2-in-progress--fix-login.md").exists()
+
+    def test_json_happy_path(self, tmp_path, capsys, monkeypatch):
+        import json
+        from taskmd.cli import main
+        monkeypatch.setenv("FORCE_AGENT_MODE", "1")
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        main(["status", "34001", "done", str(tmp_path)])
+        out = capsys.readouterr().out
+        obj = json.loads(out)
+        assert obj["status"] == "success"
+        assert obj["command"] == "status"
+        assert obj["data"]["id"] == "34001"
+        assert obj["data"]["old_status"] == "ready"
+        assert obj["data"]["new_status"] == "done"
+        assert obj["data"]["old_filename"].endswith("-p2-ready--fix-login.md")
+        assert obj["data"]["new_filename"].endswith("-p2-done--fix-login.md")
+
+    def test_unknown_id_human(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        make_task(tmp_path, "34001", "p2", "ready", "slug")
+        with pytest.raises(SystemExit) as exc:
+            main(["status", "34999", "done", str(tmp_path)])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "not found" in err
+
+    def test_unknown_id_json(self, tmp_path, capsys, monkeypatch):
+        import json
+        from taskmd.cli import main
+        monkeypatch.setenv("FORCE_AGENT_MODE", "1")
+        make_task(tmp_path, "34001", "p2", "ready", "slug")
+        with pytest.raises(SystemExit) as exc:
+            main(["status", "34999", "done", str(tmp_path)])
+        assert exc.value.code == 1
+        obj = json.loads(capsys.readouterr().out)
+        assert obj["status"] == "error"
+        assert obj["command"] == "status"
+        assert any("not found" in e for e in obj["errors"])
+
+    def test_invalid_status_human(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        make_task(tmp_path, "34001", "p2", "ready", "slug")
+        with pytest.raises(SystemExit) as exc:
+            main(["status", "34001", "pending", str(tmp_path)])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "invalid status" in err
+
+    def test_invalid_status_json(self, tmp_path, capsys, monkeypatch):
+        import json
+        from taskmd.cli import main
+        monkeypatch.setenv("FORCE_AGENT_MODE", "1")
+        make_task(tmp_path, "34001", "p2", "ready", "slug")
+        with pytest.raises(SystemExit) as exc:
+            main(["status", "34001", "pending", str(tmp_path)])
+        assert exc.value.code == 1
+        obj = json.loads(capsys.readouterr().out)
+        assert obj["status"] == "error"
+        assert any("invalid status" in e for e in obj["errors"])
+
+    def test_missing_args_errors(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        with pytest.raises(SystemExit) as exc:
+            main(["status", "34001", str(tmp_path)])
+        # "34001" and tmp_path are interpreted as id + new_status; the dir
+        # string is not a valid status, so we exit with invalid-status — but
+        # that's still exit 1 which is correct.
+        assert exc.value.code == 1
+
+    def test_missing_id_and_status_errors(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        with pytest.raises(SystemExit) as exc:
+            main(["status"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "requires" in err
+
+    def test_conflict_when_target_exists_json(self, tmp_path, capsys, monkeypatch):
+        import json
+        from taskmd.cli import main
+        monkeypatch.setenv("FORCE_AGENT_MODE", "1")
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        # Stub file sorts before the real task, so find_task_by_id picks it
+        # and the rename target collides with the real task file at 'ready'.
+        (tmp_path / "34001-p2-in-progress--fix-login.md").write_text("stub")
+        with pytest.raises(SystemExit) as exc:
+            main(["status", "34001", "ready", str(tmp_path)])
+        assert exc.value.code == 1
+        obj = json.loads(capsys.readouterr().out)
+        assert obj["status"] == "error"
+        assert any("already exists" in e for e in obj["errors"])
