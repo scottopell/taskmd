@@ -85,6 +85,15 @@ pub fn create_task(
             "artifact cannot be empty — name the file/change this task produces".into(),
         ));
     }
+    // Artifact is the only user-supplied value injected into the synthesized
+    // frontmatter verbatim, so it must stay on one line. A literal `\n---\n`
+    // inside the value would otherwise close the frontmatter block early and
+    // the resulting file would fail `taskmd validate`.
+    if artifact.contains('\n') || artifact.contains('\r') {
+        return Err(Error::InvalidValue(
+            "artifact must be a single line (no newline or carriage return)".into(),
+        ));
+    }
 
     // Normalize slug through derive_slug; it's idempotent for already-slugified
     // input and a safety net for agents that pass titles or dirty strings.
@@ -211,6 +220,38 @@ mod tests {
         let tmp = tasks_dir();
         let r = create_task(tmp.path(), "p2", "ready", "s", "   ", "");
         assert!(matches!(r, Err(Error::InvalidValue(_))));
+    }
+
+    #[test]
+    fn rejects_newline_in_artifact() {
+        let tmp = tasks_dir();
+        // A literal `\n---\n` in artifact would close the frontmatter early
+        // and let 'new' silently produce a file that 'validate' then rejects.
+        let r = create_task(tmp.path(), "p2", "ready", "s", "src/x.rs\n---\nevil", "");
+        assert!(matches!(r, Err(Error::InvalidValue(_))));
+
+        // Plain \n is also rejected (would silently truncate at parse time).
+        let r = create_task(tmp.path(), "p2", "ready", "s", "line1\nline2", "");
+        assert!(matches!(r, Err(Error::InvalidValue(_))));
+
+        // \r alone is also rejected.
+        let r = create_task(tmp.path(), "p2", "ready", "s", "line1\rline2", "");
+        assert!(matches!(r, Err(Error::InvalidValue(_))));
+    }
+
+    /// Regression: every input `create_task` accepts must produce a file that
+    /// `taskmd validate` considers clean. This is the contract the user asked
+    /// about explicitly.
+    #[test]
+    fn created_file_always_passes_validate() {
+        let tmp = tasks_dir();
+        // Exercise a mix of valid-but-unusual inputs
+        create_task(tmp.path(), "p0", "ready", "Fix: The Bug!", "src/foo.rs", "").unwrap();
+        create_task(tmp.path(), "p4", "in-progress", "x", "path/with colons:and-stuff", "body").unwrap();
+        create_task(tmp.path(), "p2", "brainstorming", "a".repeat(200).as_str(), "src/y.rs", "").unwrap();
+
+        let r = crate::validate::validate(tmp.path());
+        assert!(r.ok(), "validate failed after create_task: {:?}", r.errors);
     }
 
     #[test]
