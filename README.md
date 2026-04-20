@@ -36,6 +36,7 @@ uvx taskmd list
 taskmd init                                                                                         # create tasks/ with a template
 echo "Fix the login redirect loop when JWT is expired." | taskmd new --slug fix-login --artifact src/auth.py
 cat body.md | taskmd new --slug add-oauth --artifact src/oauth.py --priority p1                      # body from file
+taskmd status 34042 in-progress                                                                      # change a task's status atomically
 taskmd validate                                                                                      # check all task files for consistency
 taskmd fix                                                                                           # auto-repair filenames, dates, legacy formats
 taskmd list                                                                                          # list tasks with metadata
@@ -88,7 +89,7 @@ What needs to be done.
 
 Only these four fields are allowed in frontmatter. Unknown fields are rejected by validation.
 
-**To change status:** edit the `status:` field in frontmatter, then run `taskmd fix` to rename the file to match. Or rename the file directly.
+**To change status:** `taskmd status <id> <new-status>` updates the frontmatter and renames the file to match in one atomic step. It refuses to clobber an existing target filename and rejects invalid statuses up front. Hand-editing the `status:` field and running `taskmd fix` still works as an escape hatch, but `taskmd status` is the preferred path.
 
 ### Task IDs
 

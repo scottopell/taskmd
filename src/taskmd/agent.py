@@ -116,6 +116,20 @@ def schema(compact: bool = False) -> dict[str, Any]:
                 "cat body.md | taskmd new --slug fix-login --artifact src/auth.py --priority p1",
             ],
         },
+        "status": {
+            "description": "Change a task's status atomically: update the frontmatter 'status:' field AND rename the file to match in one step. This is the recommended way to transition a task through its lifecycle (ready -> in-progress -> done). Prefer it over hand-editing frontmatter + 'taskmd fix' — those still work as an escape hatch, but this is the atomic path.",
+            "args": {
+                "id": {"type": "string", "required": True, "description": "Task ID (e.g. '34042'). Look it up with 'taskmd list' if you don't know it."},
+                "new_status": {"type": "string", "required": True, "values": sorted(VALID_STATUSES), "description": "Target status. Must be a valid status."},
+                "tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"},
+            },
+            "output": "{id, old_filename, new_filename, old_status, new_status}",
+            "examples": [
+                "taskmd status 34042 in-progress",
+                "taskmd status 34042 done",
+                "taskmd status 34042 blocked ./tasks",
+            ],
+        },
         "validate": {
             "description": "Check all task files for consistency",
             "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
@@ -190,7 +204,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
         "Tasks are markdown files. After 'new' creates them, edit them directly -- that's the primary interface.",
         "A task tracks work blocked by something: user input, a different environment, passage of time, or an unmade decision. If nothing blocks you from doing it now, just do it instead of creating a task.",
         "The artifact: field names what this task produces when done (a file, a config change, a commit). If you can't fill it in, the task probably shouldn't exist.",
-        "Frontmatter is the source of truth. To change status, edit the status: field. 'taskmd fix' will rename the file to match, or you can rename it yourself.",
+        "To change a task's status, use 'taskmd status <id> <new-status>' — it updates the frontmatter and renames the file atomically. Hand-editing the status field and running 'taskmd fix' still works as an escape hatch, but 'status' is preferred.",
     ]
 
     if not compact:
@@ -232,10 +246,19 @@ def schema(compact: bool = False) -> dict[str, Any]:
                 ],
             },
             {
-                "name": "Change task status",
+                "name": "Change task status (recommended)",
+                "steps": [
+                    "taskmd status 34042 in-progress  # updates frontmatter and renames the file in one step",
+                    "taskmd status 34042 done         # same path when finishing a task",
+                    "# 'status' refuses to clobber an existing file and rejects invalid statuses up front.",
+                ],
+            },
+            {
+                "name": "Change task status by hand (escape hatch)",
                 "steps": [
                     "Edit the 'status' field in the file's YAML frontmatter",
                     "taskmd fix  # renames file to match new status",
+                    "# Prefer 'taskmd status <id> <new-status>' for this flow unless you are editing several fields at once.",
                 ],
             },
             {

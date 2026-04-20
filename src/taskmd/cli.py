@@ -3,6 +3,7 @@
 Usage:
     taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
     taskmd new --slug S --artifact A [--priority P] [--status ST] [tasks/] < body.md
+    taskmd status <id> <new-status> [tasks/]
     taskmd validate [tasks/]
     taskmd fix [tasks/]
     taskmd next [tasks/]
@@ -25,10 +26,12 @@ from taskmd.core import (
     VALID_PRIORITIES,
     VALID_STATUSES,
     create_task,
+    find_task_by_id,
     fix,
     init,
     list_tasks,
     next_id,
+    rename_status,
     validate,
 )
 
@@ -40,6 +43,7 @@ Usage: taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
 Commands:
   init       Create a new tasks directory with a template file
   new        Create a new task atomically (ID + filename + frontmatter + write)
+  status     Change a task's status atomically (updates frontmatter + renames file)
   validate   Check all task files for consistency
   fix        Auto-repair fixable issues (missing dates, mismatched filenames, legacy naming)
   next       Print the next available task ID (advisory; prefer 'new' for creation)
@@ -64,6 +68,13 @@ Creating a task:
 
   A task body is REQUIRED on stdin. A task without a description is a
   placeholder, and placeholders inflate the triage surface area.
+
+Changing status:
+  taskmd status 34042 in-progress
+  taskmd status 34042 done
+
+  Updates the frontmatter 'status:' field and renames the file to match in
+  one atomic step. Preferred over hand-editing frontmatter + 'taskmd fix'.
 
 'new' vs 'next':
   'new' is the recommended path — it allocates the ID, formats the filename,
@@ -96,6 +107,7 @@ def _parse_args(argv: list[str]) -> dict:
         "priority": None,
         "slug": None,
         "artifact": None,
+        "positional": [],
     }
 
     positional: list[str] = []
@@ -145,8 +157,12 @@ def _parse_args(argv: list[str]) -> dict:
 
     if positional:
         opts["command"] = positional[0]
-    if len(positional) > 1:
+    # Default tasks_dir handling for commands that take only [command, tasks_dir].
+    # Commands with extra positional args (e.g. 'status <id> <new-status>') read
+    # from opts["positional"] directly and compute tasks_dir themselves.
+    if len(positional) > 1 and positional[0] != "status":
         opts["tasks_dir"] = Path(positional[1])
+    opts["positional"] = positional
 
     return opts
 
@@ -410,6 +426,89 @@ def main(argv: list[str] | None = None) -> None:
             ))
         else:
             print(f"created {result.path}")
+
+    elif command == "status":
+        # Positional layout: [status, <id>, <new-status>, <tasks_dir>?]
+        positional = opts["positional"]
+        task_id = positional[1] if len(positional) > 1 else None
+        new_status = positional[2] if len(positional) > 2 else None
+        status_tasks_dir = (
+            Path(positional[3]) if len(positional) > 3 else _resolve_tasks_dir()
+        )
+
+        if not task_id or not new_status:
+            msg = "'status' requires <id> and <new-status>"
+            if use_json:
+                print(error_envelope(
+                    "status",
+                    [msg],
+                    suggestions=[
+                        "taskmd status <id> <new-status> [tasks_dir]",
+                        "Example: taskmd status 34042 in-progress",
+                        f"Valid statuses: {', '.join(sorted(VALID_STATUSES))}",
+                    ],
+                ))
+            else:
+                print(f"Error: {msg}", file=sys.stderr)
+                print("  taskmd status <id> <new-status> [tasks_dir]", file=sys.stderr)
+            sys.exit(1)
+
+        if new_status not in VALID_STATUSES:
+            msg = f"invalid status '{new_status}' (valid: {', '.join(sorted(VALID_STATUSES))})"
+            if use_json:
+                print(error_envelope("status", [msg]))
+            else:
+                print(f"Error: {msg}", file=sys.stderr)
+            sys.exit(1)
+
+        # Look up the task first so we can surface the old filename/status in
+        # both success and conflict-error payloads. If this miss races with a
+        # concurrent rename the core call below will still error cleanly.
+        existing = find_task_by_id(status_tasks_dir, task_id)
+        if existing is None:
+            msg = f"task {task_id} not found in {status_tasks_dir}"
+            if use_json:
+                print(error_envelope(
+                    "status",
+                    [msg],
+                    suggestions=[
+                        "Run 'taskmd list' to see available task IDs",
+                    ],
+                ))
+            else:
+                print(f"Error: {msg}", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            old_filename, new_filename = rename_status(
+                status_tasks_dir, task_id, new_status
+            )
+        except RuntimeError as e:
+            msg = str(e)
+            suggestions: list[str] = []
+            if "target already exists" in msg:
+                suggestions.append(
+                    "Resolve the filename collision (the target name is already taken — likely a duplicate slug)."
+                )
+            if use_json:
+                print(error_envelope("status", [msg], suggestions=suggestions or None))
+            else:
+                print(f"Error: {msg}", file=sys.stderr)
+            sys.exit(1)
+
+        if use_json:
+            print(success_envelope(
+                "status",
+                {
+                    "id": task_id,
+                    "old_filename": old_filename,
+                    "new_filename": new_filename,
+                    "old_status": existing.status,
+                    "new_status": new_status,
+                },
+            ))
+        else:
+            print(f"  {old_filename} -> {new_filename}")
 
     elif command == "list":
         tasks = list_tasks(tasks_dir)

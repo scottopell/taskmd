@@ -41,8 +41,10 @@ This project uses itself for task management.
 
 Set `TASKMD_MACHINE_ID=0` to pin D1 on your primary machine.
 
-**To change status:** edit frontmatter `status:` field, then `taskmd fix` to rename
-the file to match. You can also rename the file directly if you prefer.
+**To change status:** `taskmd status <id> <new-status>` updates the frontmatter and
+renames the file in one atomic step. Prefer it over hand-editing the frontmatter
+and running `taskmd fix` — both still work as an escape hatch, but `status` is the
+recommended path.
 
 **To create a new task:** `echo "what this task is about" | taskmd new --slug <slug> --artifact <path>` allocates the ID, formats the filename, synthesizes the frontmatter, and writes the file in one atomic step. Body on stdin is required — a task with no description is a placeholder that pollutes triage. Do NOT hand-craft filenames by pattern-matching what's already on disk; mimicking an on-disk ID is the main cause of duplicate-ID bugs. `taskmd next` still exists for integrations that must write the file themselves, but it does not claim the ID and is discouraged for interactive use.
 
