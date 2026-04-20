@@ -408,8 +408,10 @@ def test_duplicate_ids_always_detected(task_id, pri1, sta1, slug1, pri2, sta2, s
     slugs(),
     st.integers(min_value=1, max_value=990),
 )
-def test_duplicate_ids_not_fixable(pri1, sta1, slug1, pri2, sta2, slug2, seq):
-    """Property 21: duplicate task IDs (with correct prefix) cannot be fixed by fix."""
+def test_duplicate_ids_fix_renumbers(pri1, sta1, slug1, pri2, sta2, slug2, seq):
+    """Property 21: duplicate task IDs (with correct prefix) are resolved by fix,
+    which renumbers one of the two files (the "loser" per the tiebreaker) and
+    reports the mapping in result.renumbered. After fix, validate is clean."""
     with tempfile.TemporaryDirectory() as tmp_str:
         tasks_dir = Path(tmp_str)
         # Use the dir's own prefix so fix() won't migrate these files
@@ -420,10 +422,16 @@ def test_duplicate_ids_not_fixable(pri1, sta1, slug1, pri2, sta2, slug2, seq):
         )
         _write_task_file(tasks_dir, task_id, pri1, sta1, slug1)
         _write_task_file(tasks_dir, task_id, pri2, sta2, slug2)
-        fix(tasks_dir)
+        fix_result = fix(tasks_dir)
+        assert fix_result.ok, fix_result.errors
+        # Exactly one of the two duplicates got renumbered.
+        assert len(fix_result.renumbered) == 1
+        old_id, new_id, _old, _new = fix_result.renumbered[0]
+        assert old_id == task_id
+        assert new_id != task_id
+        # Validate is now clean.
         result = validate(tasks_dir)
-        assert not result.ok
-        assert any("duplicate task id" in e for e in result.errors)
+        assert result.ok, result.errors
 
 
 @given(task_directories(4))

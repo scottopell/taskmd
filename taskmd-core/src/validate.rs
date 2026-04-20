@@ -157,7 +157,7 @@ pub fn validate(tasks_dir: &Path) -> ValidationResult {
             let mut sorted_names = names.clone();
             sorted_names.sort();
             result.errors.push(format!(
-                "duplicate task id {id}: {}",
+                "duplicate task id {id}: {} — run 'taskmd fix' to auto-renumber",
                 sorted_names.join(", ")
             ));
         }

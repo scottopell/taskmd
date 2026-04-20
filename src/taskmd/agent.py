@@ -122,9 +122,9 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "output": "ValidationResult with errors[] and file_count",
         },
         "fix": {
-            "description": "Auto-repair fixable issues (missing dates, mismatched filenames, legacy ID formats)",
+            "description": "Auto-repair fixable issues (missing dates, mismatched filenames, legacy ID formats, duplicate task IDs)",
             "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
-            "output": "FixResult with patches[], renames[], migrated count, errors[]",
+            "output": "FixResult with patches[], renames[], migrated count, renumbered[] (old_id/new_id/old_filename/new_filename for each duplicate-ID loser — cross-references NOT auto-patched), errors[]",
         },
         "next": {
             "description": "Print the next available task ID (prefix derived from hostname + directory path). DISCOURAGED: this is a read-only advisory that doesn't claim the ID — two concurrent callers can receive the same ID. Prefer 'taskmd new' for creation; use 'next' only for integrations that must do their own write path.",

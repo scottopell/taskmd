@@ -89,6 +89,12 @@ class FixResult:
     migrated: int = 0
     patches: list[tuple[str, str]] = field(default_factory=list)
     renames: list[tuple[str, str]] = field(default_factory=list)
+    # Each entry: (old_id, new_id, old_filename, new_filename). These are
+    # files whose ID collided with another file's; the "loser" gets a fresh
+    # ID while the "winner" (picked by git-first-seen → mtime → filename)
+    # keeps the original. Cross-references to old_id elsewhere in the repo
+    # are NOT rewritten — grep this list and patch callers yourself.
+    renumbered: list[tuple[str, str, str, str]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -97,7 +103,7 @@ class FixResult:
 
     def summary(self) -> str:
         """Human-readable summary — delegates to the canonical Rust implementation."""
-        return _fix_summary(self.patched, self.renamed, self.migrated)
+        return _fix_summary(self.patched, self.renamed, self.migrated, len(self.renumbered))
 
 
 @dataclass
@@ -220,7 +226,8 @@ def validate(tasks_dir: Path | str = "tasks") -> ValidationResult:
 
 
 def fix(tasks_dir: Path | str = "tasks") -> FixResult:
-    """Auto-fix task files: inject missing 'created', rename to match frontmatter."""
+    """Auto-fix task files: inject missing 'created', rename to match frontmatter,
+    and renumber duplicate task IDs."""
     d = _fix(str(Path(tasks_dir)))
     return FixResult(
         patched=d["patched"],
@@ -228,6 +235,7 @@ def fix(tasks_dir: Path | str = "tasks") -> FixResult:
         migrated=d["migrated"],
         patches=[tuple(p) for p in d["patches"]],
         renames=[tuple(r) for r in d["renames"]],
+        renumbered=[tuple(r) for r in d["renumbered"]],
         errors=d["errors"],
     )
 

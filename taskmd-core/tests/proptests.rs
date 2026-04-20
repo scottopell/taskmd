@@ -590,7 +590,8 @@ proptest! {
 // P29: fix_summary "all correct" iff all counts are zero (bug 2)
 //
 // fix_summary is a pure function. It must report "All files already correct"
-// if and only if all three counters (patched, renamed, migrated) are zero.
+// if and only if every counter (patched, renamed, migrated, renumbered) is
+// zero.
 // ---------------------------------------------------------------------------
 
 proptest! {
@@ -599,14 +600,15 @@ proptest! {
         patched in 0..10usize,
         renamed in 0..10usize,
         migrated in 0..10usize,
+        renumbered in 0..10usize,
     ) {
-        let summary = fix_summary(patched, renamed, migrated);
-        let all_zero = patched == 0 && renamed == 0 && migrated == 0;
+        let summary = fix_summary(patched, renamed, migrated, renumbered);
+        let all_zero = patched == 0 && renamed == 0 && migrated == 0 && renumbered == 0;
         prop_assert_eq!(
             summary == "All files already correct",
             all_zero,
-            "fix_summary({}, {}, {}) = {:?}",
-            patched, renamed, migrated, summary
+            "fix_summary({}, {}, {}, {}) = {:?}",
+            patched, renamed, migrated, renumbered, summary
         );
     }
 }

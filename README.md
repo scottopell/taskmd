@@ -37,7 +37,7 @@ taskmd init                                                                     
 echo "Fix the login redirect loop when JWT is expired." | taskmd new --slug fix-login --artifact src/auth.py
 cat body.md | taskmd new --slug add-oauth --artifact src/oauth.py --priority p1                      # body from file
 taskmd validate                                                                                      # check all task files for consistency
-taskmd fix                                                                                           # auto-repair filenames, dates, legacy formats
+taskmd fix                                                                                           # auto-repair filenames, dates, legacy formats, duplicate IDs
 taskmd list                                                                                          # list tasks with metadata
 taskmd list --status ready --priority p0                                                             # filter to what matters
 ```

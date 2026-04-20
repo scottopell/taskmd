@@ -396,6 +396,75 @@ class TestFix:
         assert result2.renamed == 0
         assert result2.migrated == 0
 
+    def test_renumber_two_duplicates(self, tmp_path):
+        """End-to-end: two files with the same ID → fix renumbers one and
+        reports the mapping; validate is clean afterwards."""
+        import time
+
+        prefix = _prefix_for(tmp_path)
+        tid = f"{prefix}001"
+        # Tiebreaker resolves on mtime when neither file is in git: the older
+        # mtime wins. Sleep between writes so the order is deterministic.
+        make_task(tmp_path, tid, "p2", "ready", "alpha")
+        time.sleep(0.05)
+        make_task(tmp_path, tid, "p1", "done", "beta")
+
+        result = fix(tmp_path)
+        assert result.ok, result.errors
+        assert len(result.renumbered) == 1
+        old_id, new_id, old_name, new_name = result.renumbered[0]
+        assert old_id == tid
+        assert new_id != tid
+        # Same priority/status/slug as the loser — renumber only touches the ID.
+        assert "-p1-done--beta.md" in new_name
+        # Filesystem reflects the change.
+        assert not (tmp_path / old_name).exists()
+        assert (tmp_path / new_name).exists()
+        # Validate is clean afterwards.
+        assert validate(tmp_path).ok
+
+    def test_renumber_idempotent(self, tmp_path):
+        """Running fix twice after a renumber is a no-op for the second run."""
+        import time
+
+        prefix = _prefix_for(tmp_path)
+        tid = f"{prefix}007"
+        make_task(tmp_path, tid, "p2", "ready", "first")
+        time.sleep(0.05)
+        make_task(tmp_path, tid, "p2", "ready", "second")
+        r1 = fix(tmp_path)
+        assert len(r1.renumbered) == 1
+        r2 = fix(tmp_path)
+        assert r2.renumbered == []
+        assert r2.renamed == 0
+
+    def test_renumber_summary_reports_count(self, tmp_path):
+        """FixResult.summary() mentions the renumber count when non-zero."""
+        import time
+
+        prefix = _prefix_for(tmp_path)
+        tid = f"{prefix}050"
+        make_task(tmp_path, tid, "p2", "ready", "a")
+        time.sleep(0.05)
+        make_task(tmp_path, tid, "p2", "ready", "b")
+        result = fix(tmp_path)
+        assert "renumbered" in result.summary().lower()
+
+
+class TestValidateMentionsFix:
+    """Validate's duplicate-ID error points callers at `taskmd fix`."""
+
+    def test_duplicate_error_suggests_fix(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        make_task(tmp_path, f"{prefix}001", "p2", "ready", "alpha")
+        make_task(tmp_path, f"{prefix}001", "p1", "done", "beta")
+        result = validate(tmp_path)
+        assert not result.ok
+        dup_errors = [e for e in result.errors if "duplicate task id" in e]
+        assert dup_errors, "expected at least one duplicate-id error"
+        # Every duplicate-id error now points at the remediation.
+        assert all("taskmd fix" in e for e in dup_errors), dup_errors
+
 
 # ---------------------------------------------------------------------------
 # next_id
