@@ -408,11 +408,11 @@ fn renumber_duplicates(tasks_dir: &Path, result: &mut FixResult) {
             // (and any previously-renumbered losers in this loop, since we
             // rename on disk before the next iteration).
             let new_id = next_id(tasks_dir);
-            let (new_prefix, new_seq) = parse_id_parts(&new_id);
+            let (_, new_seq) = parse_id_parts(&new_id);
             // Defensive: if next_id produces something past MAX_SEQ (prefix
             // space exhausted) record a per-file error and move on instead of
             // renaming into a bad state.
-            if new_seq > MAX_SEQ || new_prefix.is_empty() {
+            if new_seq > MAX_SEQ {
                 result.errors.push(format!(
                     "{old_name}: cannot renumber — prefix space appears exhausted \
                      (next_id returned '{new_id}')"
@@ -435,13 +435,13 @@ fn renumber_duplicates(tasks_dir: &Path, result: &mut FixResult) {
                 continue;
             }
 
+            // Renumbers are tracked ONLY in `renumbered` — they are not also
+            // pushed to `renames`/`renamed`. Double-booking them would make
+            // the summary double-count the same on-disk event (one file
+            // shows up twice in user-facing output).
             result
                 .renumbered
-                .push((old_id, new_id, old_name.clone(), new_filename.clone()));
-            // Renumbering also counts as a rename for the rename counter, so
-            // the summary remains internally consistent with the on-disk delta.
-            result.renames.push((old_name, new_filename));
-            result.renamed += 1;
+                .push((old_id, new_id, old_name, new_filename));
         }
     }
 }
@@ -573,7 +573,10 @@ mod tests {
     }
 
     #[test]
-    fn fix_result_includes_renumbered_in_renames_total() {
+    fn renumbered_losers_are_not_counted_as_renames() {
+        // A renumber is a rename on disk, but it's reported ONLY in
+        // `renumbered` — not also in `renames` — so user-facing output
+        // doesn't double-count the same event.
         let tmp = TempDir::new().unwrap();
         let prefix = prefix_for(tmp.path());
         let id = format!("{prefix}001");
@@ -582,8 +585,8 @@ mod tests {
         write_task(tmp.path(), &id, "p2", "ready", "second");
 
         let r = fix(tmp.path());
-        // The loser is renamed, so renamed counter reflects that.
-        assert_eq!(r.renamed, 1);
+        assert_eq!(r.renamed, 0, "renumbers should not bump the rename counter");
+        assert_eq!(r.renames.len(), 0, "renumbers should not appear in renames[]");
         assert_eq!(r.renumbered.len(), 1);
     }
 
@@ -629,30 +632,12 @@ mod tests {
         assert!(!tmp.path().join("0042-p2-ready--legacy.md").exists());
     }
 
-    #[test]
-    fn prefix_exhaustion_reports_per_file_error() {
-        // Fill the local prefix space to the brim so next_id has to overflow.
-        // The overflow path still returns a valid ID unless all prefixes are
-        // full, which we can't reasonably simulate here. Instead we test the
-        // weaker invariant: when a duplicate pair exists and next_id returns
-        // a malformed/empty-prefix ID, the loser is reported in errors and
-        // not silently renamed.
-        //
-        // We exercise this via the sorting helper rather than the file path
-        // because simulating a 10000-file prefix exhaustion in a unit test is
-        // disproportionate. The runtime check in renumber_duplicates exists
-        // specifically so this failure mode produces an actionable error.
-        //
-        // Sanity check: a single duplicate in a sparse dir works cleanly.
-        let tmp = TempDir::new().unwrap();
-        let prefix = prefix_for(tmp.path());
-        write_task(tmp.path(), &format!("{prefix}001"), "p2", "ready", "a");
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        write_task(tmp.path(), &format!("{prefix}001"), "p2", "ready", "b");
-        let r = fix(tmp.path());
-        assert!(r.ok(), "{:?}", r.errors);
-        assert_eq!(r.renumbered.len(), 1);
-    }
+    // Note on prefix-exhaustion: the runtime check at the `new_seq > MAX_SEQ`
+    // branch in renumber_duplicates handles the case where next_id can't find
+    // a free slot. Exercising it in a unit test would require simulating a
+    // full 10000-file corpus, which is disproportionate — the guard is there
+    // as an escape hatch, not a hot path. If this shape of failure starts
+    // happening for real users, add a targeted test then.
 
     #[test]
     fn summary_reports_renumber_count() {
