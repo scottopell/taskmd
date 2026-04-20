@@ -507,15 +507,17 @@ class TestInit:
 # ---------------------------------------------------------------------------
 
 class TestCreateTask:
-    def test_creates_file_with_frontmatter_and_default_body(self, tmp_path):
-        result = create_task(tmp_path, slug="fix-login", artifact="src/auth.py")
+    def test_creates_file_with_frontmatter_and_body(self, tmp_path):
+        result = create_task(
+            tmp_path, slug="fix-login", artifact="src/auth.py", body="Fix the bug."
+        )
         assert result.path.exists()
         assert result.filename.endswith("-p2-ready--fix-login.md")
         content = result.path.read_text(encoding="utf-8")
         assert "priority: p2" in content
         assert "status: ready" in content
         assert "artifact: src/auth.py" in content
-        assert "## Summary" in content  # default skeleton body
+        assert "Fix the bug." in content
 
     def test_custom_body_is_used(self, tmp_path):
         result = create_task(
@@ -525,38 +527,55 @@ class TestCreateTask:
 
     def test_priority_and_status_overrides(self, tmp_path):
         result = create_task(
-            tmp_path, slug="x", artifact="src/x.py", priority="p0", status="in-progress"
+            tmp_path,
+            slug="x",
+            artifact="src/x.py",
+            priority="p0",
+            status="in-progress",
+            body="body",
         )
         assert "-p0-in-progress--x.md" in result.filename
 
     def test_dirty_slug_is_normalized(self, tmp_path):
-        result = create_task(tmp_path, slug="Add OAuth2!", artifact="src/x.py")
+        result = create_task(
+            tmp_path, slug="Add OAuth2!", artifact="src/x.py", body="body"
+        )
         assert "--add-oauth2.md" in result.filename
 
     def test_sequential_creates_are_monotonic(self, tmp_path):
-        a = create_task(tmp_path, slug="a", artifact="src/a.py")
-        b = create_task(tmp_path, slug="b", artifact="src/b.py")
+        a = create_task(tmp_path, slug="a", artifact="src/a.py", body="body")
+        b = create_task(tmp_path, slug="b", artifact="src/b.py", body="body")
         assert int(a.id[2:]) + 1 == int(b.id[2:])
 
     def test_result_file_validates_clean(self, tmp_path):
-        create_task(tmp_path, slug="clean", artifact="src/clean.py")
+        create_task(tmp_path, slug="clean", artifact="src/clean.py", body="body")
         assert validate(tmp_path).ok
 
     def test_missing_tasks_dir_raises(self, tmp_path):
         missing = tmp_path / "nope"
         with pytest.raises(RuntimeError):
-            create_task(missing, slug="x", artifact="src/x.py")
+            create_task(missing, slug="x", artifact="src/x.py", body="body")
 
     def test_invalid_priority_raises(self, tmp_path):
         with pytest.raises(RuntimeError):
-            create_task(tmp_path, slug="x", artifact="src/x.py", priority="p9")
+            create_task(
+                tmp_path, slug="x", artifact="src/x.py", priority="p9", body="body"
+            )
 
     def test_body_with_frontmatter_raises(self, tmp_path):
         with pytest.raises(RuntimeError):
             create_task(
-                tmp_path, slug="x", artifact="src/x.py", body="---\nstatus: ready\n---\nbody"
+                tmp_path,
+                slug="x",
+                artifact="src/x.py",
+                body="---\nstatus: ready\n---\nbody",
             )
 
     def test_empty_artifact_raises(self, tmp_path):
         with pytest.raises(RuntimeError):
-            create_task(tmp_path, slug="x", artifact="   ")
+            create_task(tmp_path, slug="x", artifact="   ", body="body")
+
+    def test_empty_body_raises(self, tmp_path):
+        for body in ("", "   ", "\n\n", "\t\n"):
+            with pytest.raises(RuntimeError):
+                create_task(tmp_path, slug="x", artifact="src/x.py", body=body)

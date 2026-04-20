@@ -101,19 +101,18 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "output": "InitResult with tasks_dir, created[], template_fields[]",
         },
         "new": {
-            "description": "Create a new task atomically: allocate next ID, synthesize frontmatter, and write the file in one step. This is the recommended way to create tasks — prefer it over 'next' + manual file writes. Body is read from stdin; omit stdin to get a template skeleton.",
+            "description": "Create a new task atomically: allocate next ID, synthesize frontmatter, and write the file in one step. This is the recommended way to create tasks — prefer it over 'next' + manual file writes. Body is REQUIRED on stdin — a task with no description is a placeholder that inflates triage surface area.",
             "args": {
                 "tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"},
                 "--slug": {"type": "string", "required": True, "description": "URL-safe slug (e.g. 'fix-login-bug'). Dirty input is normalized via derive_slug."},
                 "--artifact": {"type": "string", "required": True, "description": "The concrete output this task produces (file path, config change, commit). Required — if you cannot name one, the task probably should not exist."},
                 "--priority": {"type": "string", "default": "p2", "values": sorted(VALID_PRIORITIES)},
                 "--status": {"type": "string", "default": "ready", "values": sorted(VALID_STATUSES)},
-                "stdin": {"type": "markdown body", "description": "Task body (no frontmatter — that's synthesized). If stdin is empty, a skeleton body is used."},
+                "stdin": {"type": "markdown body", "required": True, "description": "Task body (no frontmatter — that's synthesized). Must be non-empty. If you just want to allocate an ID and fill details in later, pipe a one-line body and edit the file afterwards."},
             },
             "output": "CreateResult with id, path, filename",
             "examples": [
-                "taskmd new --slug fix-login --artifact src/auth.py",
-                "echo 'body text' | taskmd new --slug fix-login --artifact src/auth.py",
+                "echo 'Fix the login redirect loop when the JWT is expired.' | taskmd new --slug fix-login --artifact src/auth.py",
                 "cat body.md | taskmd new --slug fix-login --artifact src/auth.py --priority p1",
             ],
         },
@@ -213,11 +212,12 @@ def schema(compact: bool = False) -> dict[str, Any]:
             {
                 "name": "Create a new task (recommended)",
                 "steps": [
-                    "taskmd new --slug fix-login --artifact src/auth.py  # skeleton body",
-                    "# Or pipe a prewritten body:",
+                    "echo 'Fix the login redirect loop when JWT is expired.' | taskmd new --slug fix-login --artifact src/auth.py",
+                    "# Or, with a prewritten body file and non-default priority:",
                     "#   cat body.md | taskmd new --slug fix-login --artifact src/auth.py --priority p1",
+                    "# Body on stdin is REQUIRED — a task with no description is a placeholder.",
                     "# 'new' prints the created path on success.",
-                    "taskmd validate  # confirm it's valid",
+                    "taskmd validate  # confirm it's valid (should always be — 'new' guarantees it)",
                 ],
             },
             {

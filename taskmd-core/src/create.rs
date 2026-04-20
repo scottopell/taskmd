@@ -8,6 +8,11 @@
 //!
 //! This exists primarily as ergonomics for agents that otherwise follow
 //! on-disk ID patterns by example and skip `taskmd next` entirely.
+//!
+//! Body is required: a task that can't be described in at least one line is
+//! a placeholder, and placeholders inflate triage surface area. Callers that
+//! genuinely want to allocate an ID and fill in details after can pass a
+//! one-line body and follow up with a file edit.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -24,29 +29,6 @@ use crate::ids::next_id;
 /// a real workload will produce.
 const MAX_CREATE_RETRIES: u32 = 50;
 
-/// Default body used when no body is supplied on stdin — matches the shape
-/// of `_TEMPLATE.md` so downstream validation passes without hand-editing.
-const DEFAULT_BODY: &str = "\
-# Task Title
-
-## Summary
-
-Brief description of what needs to be done.
-
-## Context
-
-Why this task exists, any relevant background.
-
-## Done When
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-
-## Notes
-
-Any additional information.
-";
-
 /// Metadata returned to the caller after a successful write.
 #[derive(Debug, Clone)]
 pub struct CreatedTask {
@@ -57,9 +39,10 @@ pub struct CreatedTask {
 
 /// Allocate an ID, synthesize frontmatter, and atomically write a new task file.
 ///
-/// `body` may be empty — a default skeleton is used. `body` must not itself
-/// contain a frontmatter block; frontmatter is synthesized from the
-/// `priority`/`status`/`artifact` arguments plus today's date.
+/// `body` is required and must be non-empty (after trimming whitespace).
+/// `body` must not itself contain a frontmatter block; frontmatter is
+/// synthesized from the `priority`/`status`/`artifact` arguments plus
+/// today's date.
 pub fn create_task(
     tasks_dir: &Path,
     priority: &str,
@@ -109,19 +92,25 @@ pub fn create_task(
         )));
     }
 
-    let body_trimmed = if body.trim().is_empty() {
-        DEFAULT_BODY.trim_end_matches('\n').to_string()
-    } else {
-        // Reject a frontmatter-in-body mistake early with a useful message.
-        if body.trim_start().starts_with("---\n") || body.trim_start().starts_with("---\r\n") {
-            return Err(Error::InvalidValue(
-                "body appears to contain its own frontmatter; pass only the markdown body — \
-                 frontmatter is synthesized from --priority/--status/--artifact"
-                    .into(),
-            ));
-        }
-        body.trim_end_matches('\n').to_string()
-    };
+    if body.trim().is_empty() {
+        return Err(Error::InvalidValue(
+            "body is required — pipe at least one line of description on stdin. \
+             A task with no body is a placeholder; if you cannot describe it, \
+             do not create it yet."
+                .into(),
+        ));
+    }
+
+    // Reject a frontmatter-in-body mistake early with a useful message.
+    if body.trim_start().starts_with("---\n") || body.trim_start().starts_with("---\r\n") {
+        return Err(Error::InvalidValue(
+            "body appears to contain its own frontmatter; pass only the markdown body — \
+             frontmatter is synthesized from --priority/--status/--artifact"
+                .into(),
+        ));
+    }
+
+    let body_trimmed = body.trim_end_matches('\n').to_string();
 
     let created = today();
 
@@ -193,32 +182,35 @@ mod tests {
     }
 
     #[test]
-    fn uses_default_body_when_empty() {
+    fn rejects_empty_body() {
         let tmp = tasks_dir();
-        let r = create_task(tmp.path(), "p2", "ready", "no-body", "src/x.rs", "").unwrap();
-        let content = std::fs::read_to_string(&r.path).unwrap();
-        assert!(content.contains("## Summary"));
-        assert!(content.contains("## Done When"));
+        for body in ["", "   ", "\n", "\t\n  \n"] {
+            let r = create_task(tmp.path(), "p2", "ready", "s", "src/x.rs", body);
+            assert!(
+                matches!(r, Err(Error::InvalidValue(_))),
+                "empty body {body:?} should be rejected",
+            );
+        }
     }
 
     #[test]
     fn rejects_invalid_priority() {
         let tmp = tasks_dir();
-        let r = create_task(tmp.path(), "p9", "ready", "s", "a", "");
+        let r = create_task(tmp.path(), "p9", "ready", "s", "a", "body");
         assert!(matches!(r, Err(Error::InvalidValue(_))));
     }
 
     #[test]
     fn rejects_invalid_status() {
         let tmp = tasks_dir();
-        let r = create_task(tmp.path(), "p2", "pending", "s", "a", "");
+        let r = create_task(tmp.path(), "p2", "pending", "s", "a", "body");
         assert!(matches!(r, Err(Error::InvalidValue(_))));
     }
 
     #[test]
     fn rejects_empty_artifact() {
         let tmp = tasks_dir();
-        let r = create_task(tmp.path(), "p2", "ready", "s", "   ", "");
+        let r = create_task(tmp.path(), "p2", "ready", "s", "   ", "body");
         assert!(matches!(r, Err(Error::InvalidValue(_))));
     }
 
@@ -227,15 +219,15 @@ mod tests {
         let tmp = tasks_dir();
         // A literal `\n---\n` in artifact would close the frontmatter early
         // and let 'new' silently produce a file that 'validate' then rejects.
-        let r = create_task(tmp.path(), "p2", "ready", "s", "src/x.rs\n---\nevil", "");
+        let r = create_task(tmp.path(), "p2", "ready", "s", "src/x.rs\n---\nevil", "body");
         assert!(matches!(r, Err(Error::InvalidValue(_))));
 
         // Plain \n is also rejected (would silently truncate at parse time).
-        let r = create_task(tmp.path(), "p2", "ready", "s", "line1\nline2", "");
+        let r = create_task(tmp.path(), "p2", "ready", "s", "line1\nline2", "body");
         assert!(matches!(r, Err(Error::InvalidValue(_))));
 
         // \r alone is also rejected.
-        let r = create_task(tmp.path(), "p2", "ready", "s", "line1\rline2", "");
+        let r = create_task(tmp.path(), "p2", "ready", "s", "line1\rline2", "body");
         assert!(matches!(r, Err(Error::InvalidValue(_))));
     }
 
@@ -246,9 +238,9 @@ mod tests {
     fn created_file_always_passes_validate() {
         let tmp = tasks_dir();
         // Exercise a mix of valid-but-unusual inputs
-        create_task(tmp.path(), "p0", "ready", "Fix: The Bug!", "src/foo.rs", "").unwrap();
+        create_task(tmp.path(), "p0", "ready", "Fix: The Bug!", "src/foo.rs", "body").unwrap();
         create_task(tmp.path(), "p4", "in-progress", "x", "path/with colons:and-stuff", "body").unwrap();
-        create_task(tmp.path(), "p2", "brainstorming", "a".repeat(200).as_str(), "src/y.rs", "").unwrap();
+        create_task(tmp.path(), "p2", "brainstorming", "a".repeat(200).as_str(), "src/y.rs", "body").unwrap();
 
         let r = crate::validate::validate(tmp.path());
         assert!(r.ok(), "validate failed after create_task: {:?}", r.errors);
@@ -266,22 +258,22 @@ mod tests {
     fn rejects_missing_tasks_dir() {
         let tmp = TempDir::new().unwrap();
         let missing = tmp.path().join("does-not-exist");
-        let r = create_task(&missing, "p2", "ready", "s", "a", "");
+        let r = create_task(&missing, "p2", "ready", "s", "a", "body");
         assert!(matches!(r, Err(Error::NotFound(_))));
     }
 
     #[test]
     fn slug_is_normalized() {
         let tmp = tasks_dir();
-        let r = create_task(tmp.path(), "p2", "ready", "Fix The Bug!", "src/x.rs", "").unwrap();
+        let r = create_task(tmp.path(), "p2", "ready", "Fix The Bug!", "src/x.rs", "body").unwrap();
         assert!(r.filename.contains("--fix-the-bug.md"));
     }
 
     #[test]
     fn sequential_creates_yield_monotonic_ids() {
         let tmp = tasks_dir();
-        let a = create_task(tmp.path(), "p2", "ready", "a", "src/a.rs", "").unwrap();
-        let b = create_task(tmp.path(), "p2", "ready", "b", "src/b.rs", "").unwrap();
+        let a = create_task(tmp.path(), "p2", "ready", "a", "src/a.rs", "body").unwrap();
+        let b = create_task(tmp.path(), "p2", "ready", "b", "src/b.rs", "body").unwrap();
         assert_ne!(a.id, b.id);
         // Both IDs share the same 2-digit prefix and b's sequence > a's
         assert_eq!(a.id[..2], b.id[..2]);
@@ -299,7 +291,7 @@ mod tests {
         let squatter = format_filename(&squatter_id, "p2", "ready", "squatter");
         std::fs::write(tmp.path().join(&squatter), "squat").unwrap();
 
-        let r = create_task(tmp.path(), "p2", "ready", "winner", "src/x.rs", "").unwrap();
+        let r = create_task(tmp.path(), "p2", "ready", "winner", "src/x.rs", "body").unwrap();
         assert_ne!(r.id, squatter_id);
         assert!(r.filename.contains("--winner.md"));
     }

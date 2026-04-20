@@ -59,9 +59,11 @@ Arguments:
   tasks_dir         Path to tasks directory (default: ./tasks or ./tasksmd)
 
 Creating a task:
-  taskmd new --slug fix-login --artifact src/auth.py          # skeleton body
-  echo "body text" | taskmd new --slug fix-login --artifact src/auth.py
-  cat body.md    | taskmd new --slug fix-login --artifact src/auth.py --priority p1
+  echo "what this task is about" | taskmd new --slug fix-login --artifact src/auth.py
+  cat body.md                    | taskmd new --slug fix-login --artifact src/auth.py --priority p1
+
+  A task body is REQUIRED on stdin. A task without a description is a
+  placeholder, and placeholders inflate the triage surface area.
 
 'new' vs 'next':
   'new' is the recommended path — it allocates the ID, formats the filename,
@@ -347,8 +349,28 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"Error: {msg}", file=sys.stderr)
             sys.exit(1)
 
-        # Body from stdin when piped; empty (→ skeleton) when interactive.
-        body = "" if sys.stdin.isatty() else sys.stdin.read()
+        # Body is required. Detect the interactive-tty case up front so the
+        # caller gets a specific, actionable error instead of the generic
+        # "body is required" from core. Empty piped stdin still falls
+        # through to core's validation.
+        if sys.stdin.isatty():
+            msg = "'new' requires a task body on stdin"
+            if use_json:
+                print(error_envelope(
+                    "new",
+                    [msg],
+                    suggestions=[
+                        "echo 'what this task is about' | taskmd new --slug ... --artifact ...",
+                        "cat body.md | taskmd new --slug ... --artifact ...",
+                        "A task with no body is a placeholder — if you cannot describe it, do not create it yet.",
+                    ],
+                ))
+            else:
+                print(f"Error: {msg} (pipe a description on stdin)", file=sys.stderr)
+                print("  echo 'what this task is about' | taskmd new --slug ... --artifact ...", file=sys.stderr)
+            sys.exit(1)
+
+        body = sys.stdin.read()
 
         try:
             result = create_task(
@@ -361,12 +383,18 @@ def main(argv: list[str] | None = None) -> None:
             )
         except RuntimeError as e:
             msg = str(e)
+            # Only offer suggestions that actually match the underlying error,
+            # otherwise the output misleads (e.g. "Run taskmd init" shown for
+            # a body-missing failure).
+            suggestions: list[str] = []
+            if "tasks directory does not exist" in msg:
+                suggestions.append("Run 'taskmd init' first")
+            if "body is required" in msg:
+                suggestions.append(
+                    "Pipe a description on stdin: echo 'desc' | taskmd new --slug ... --artifact ..."
+                )
             if use_json:
-                print(error_envelope(
-                    "new",
-                    [msg],
-                    suggestions=["Run 'taskmd init' if the tasks directory doesn't exist yet"],
-                ))
+                print(error_envelope("new", [msg], suggestions=suggestions or None))
             else:
                 print(f"Error: {msg}", file=sys.stderr)
             sys.exit(1)
