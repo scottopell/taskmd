@@ -6,7 +6,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::path::Path;
-use taskmd_core::{constants, filename, fix, ids, init, tasks, validate as vld};
+use taskmd_core::{constants, create, filename, fix, ids, init, tasks, validate as vld};
 
 // ── Task dict helper ──────────────────────────────────────────────────────────
 
@@ -147,6 +147,36 @@ fn do_fix(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
     Ok(dict.into_any().unbind())
 }
 
+// ── Create (atomic new-task) ──────────────────────────────────────────────────
+
+#[pyfunction]
+#[pyo3(signature = (tasks_dir, priority, status, slug, artifact, body))]
+fn do_create(
+    py: Python<'_>,
+    tasks_dir: &str,
+    priority: &str,
+    status: &str,
+    slug: &str,
+    artifact: &str,
+    body: &str,
+) -> PyResult<Py<PyAny>> {
+    let created = create::create_task(
+        Path::new(tasks_dir),
+        priority,
+        status,
+        slug,
+        artifact,
+        body,
+    )
+    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+    let dict = PyDict::new(py);
+    dict.set_item("id", &created.id)?;
+    dict.set_item("path", created.path.to_string_lossy().as_ref())?;
+    dict.set_item("filename", &created.filename)?;
+    Ok(dict.into_any().unbind())
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 #[pyfunction]
@@ -190,6 +220,7 @@ fn _core(m: &pyo3::Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fix_summary, m)?)?;
     m.add_function(wrap_pyfunction!(do_fix, m)?)?;
     m.add_function(wrap_pyfunction!(do_init, m)?)?;
+    m.add_function(wrap_pyfunction!(do_create, m)?)?;
 
     // Constants — sourced from taskmd_core::constants (single definition)
     m.add("FILENAME_PATTERN", filename::FILENAME_PATTERN.as_str())?;

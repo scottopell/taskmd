@@ -46,7 +46,7 @@ fn mtime_date(path: &Path) -> Option<String> {
     Some(dt.format("%Y-%m-%d").to_string())
 }
 
-fn today() -> String {
+pub fn today() -> String {
     Local::now().format("%Y-%m-%d").to_string()
 }
 

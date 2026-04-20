@@ -33,14 +33,16 @@ uvx taskmd list
 ## Quick start
 
 ```bash
-taskmd init             # create tasks/ with a template
-taskmd next             # get the next available task ID
-# create your task file, then:
-taskmd validate         # check all task files for consistency
-taskmd fix              # auto-repair filenames, dates, legacy formats
-taskmd list             # list tasks with metadata
-taskmd list --status ready --priority p0   # filter to what matters
+taskmd init                                                                                         # create tasks/ with a template
+echo "Fix the login redirect loop when JWT is expired." | taskmd new --slug fix-login --artifact src/auth.py
+cat body.md | taskmd new --slug add-oauth --artifact src/oauth.py --priority p1                      # body from file
+taskmd validate                                                                                      # check all task files for consistency
+taskmd fix                                                                                           # auto-repair filenames, dates, legacy formats
+taskmd list                                                                                          # list tasks with metadata
+taskmd list --status ready --priority p0                                                             # filter to what matters
 ```
+
+`taskmd new` is the recommended way to create tasks — it allocates the ID, formats the filename, synthesizes the frontmatter, and writes the file in one atomic step. The body is required on stdin; a task with no description is a placeholder that pollutes triage. `taskmd next` exists for integrations that need just an ID string, but it's a sharp edge (two concurrent callers can receive the same ID).
 
 All commands auto-detect `./tasks` or `./tasksmd` as the default directory. Pass a path to override.
 

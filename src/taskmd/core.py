@@ -18,6 +18,7 @@ from taskmd._core import (  # type: ignore[import]
     VALID_PRIORITIES as _VALID_PRIORITIES,
     VALID_STATUSES as _VALID_STATUSES,
     derive_slug,
+    do_create as _create,
     do_fix as _fix,
     do_init as _init,
     find_task_by_id as _find_task_by_id,
@@ -111,6 +112,15 @@ class InitResult:
     @property
     def ok(self) -> bool:
         return self.error is None
+
+
+@dataclass
+class CreateResult:
+    """Result of atomically creating a new task file."""
+
+    id: str
+    path: Path
+    filename: str
 
 
 # ---------------------------------------------------------------------------
@@ -231,3 +241,22 @@ def init(tasks_dir: Path | str = "tasks") -> InitResult:
         template_fields=d["template_fields"],
         error=d["error"],
     )
+
+
+def create_task(
+    tasks_dir: Path | str,
+    *,
+    slug: str,
+    artifact: str,
+    priority: str = "p2",
+    status: str = "ready",
+    body: str = "",
+) -> CreateResult:
+    """Atomically allocate an ID, synthesize frontmatter, and write a new task file.
+
+    Raises ``RuntimeError`` on invalid input, missing tasks dir, or collision
+    exhaustion.  Does not depend on the caller having first run
+    ``taskmd next`` — the ID is allocated and claimed as a single operation.
+    """
+    d = _create(str(Path(tasks_dir)), priority, status, slug, artifact, body)
+    return CreateResult(id=d["id"], path=Path(d["path"]), filename=d["filename"])

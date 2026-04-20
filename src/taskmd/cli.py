@@ -2,6 +2,7 @@
 
 Usage:
     taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
+    taskmd new --slug S --artifact A [--priority P] [--status ST] [tasks/] < body.md
     taskmd validate [tasks/]
     taskmd fix [tasks/]
     taskmd next [tasks/]
@@ -23,6 +24,7 @@ from taskmd.agent import (
 from taskmd.core import (
     VALID_PRIORITIES,
     VALID_STATUSES,
+    create_task,
     fix,
     init,
     list_tasks,
@@ -37,21 +39,38 @@ Usage: taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
 
 Commands:
   init       Create a new tasks directory with a template file
+  new        Create a new task atomically (ID + filename + frontmatter + write)
   validate   Check all task files for consistency
   fix        Auto-repair fixable issues (missing dates, mismatched filenames, legacy naming)
-  next       Print the next available task ID
+  next       Print the next available task ID (advisory; prefer 'new' for creation)
   list       List all task files with metadata
 
 Options:
-  --version, -V   Print version and exit
-  --agent         Force agent mode (JSON output, structured --help)
-  --output FMT    Output format: json or text (default: text, json in agent mode)
-  --compact       With --help in agent mode: minimal schema (fewer tokens)
-  --status S      (list) Filter by status
-  --priority P    (list) Filter by priority
+  --version, -V     Print version and exit
+  --agent           Force agent mode (JSON output, structured --help)
+  --output FMT      Output format: json or text (default: text, json in agent mode)
+  --compact         With --help in agent mode: minimal schema (fewer tokens)
+  --slug S          (new) URL-safe slug; dirty input is normalized. Required.
+  --artifact A      (new) Concrete output the task produces (file path, commit, etc.). Required.
+  --priority P      (new, list) Priority (default: p2 for 'new')
+  --status S        (new, list) Status (default: ready for 'new')
 
 Arguments:
-  tasks_dir       Path to tasks directory (default: ./tasks or ./tasksmd)"""
+  tasks_dir         Path to tasks directory (default: ./tasks or ./tasksmd)
+
+Creating a task:
+  echo "what this task is about" | taskmd new --slug fix-login --artifact src/auth.py
+  cat body.md                    | taskmd new --slug fix-login --artifact src/auth.py --priority p1
+
+  A task body is REQUIRED on stdin. A task without a description is a
+  placeholder, and placeholders inflate the triage surface area.
+
+'new' vs 'next':
+  'new' is the recommended path — it allocates the ID, formats the filename,
+  synthesizes the frontmatter, and writes the file in one atomic step.
+  'next' returns just an ID string; callers are responsible for writing the
+  file themselves, which is a sharp edge (two concurrent 'next' callers can
+  receive the same ID)."""
 
 
 def _resolve_tasks_dir() -> Path:
@@ -75,6 +94,8 @@ def _parse_args(argv: list[str]) -> dict:
         "tasks_dir": None,
         "status": None,
         "priority": None,
+        "slug": None,
+        "artifact": None,
     }
 
     positional: list[str] = []
@@ -104,6 +125,16 @@ def _parse_args(argv: list[str]) -> dict:
             opts["priority"] = argv[i]
         elif arg.startswith("--priority="):
             opts["priority"] = arg.split("=", 1)[1]
+        elif arg == "--slug" and i + 1 < len(argv):
+            i += 1
+            opts["slug"] = argv[i]
+        elif arg.startswith("--slug="):
+            opts["slug"] = arg.split("=", 1)[1]
+        elif arg == "--artifact" and i + 1 < len(argv):
+            i += 1
+            opts["artifact"] = argv[i]
+        elif arg.startswith("--artifact="):
+            opts["artifact"] = arg.split("=", 1)[1]
         elif arg.startswith("-"):
             print(f"Unknown flag: {arg}", file=sys.stderr)
             print("Run 'taskmd --help' for usage.", file=sys.stderr)
@@ -260,11 +291,125 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"\u2713 {result.summary()}")
 
     elif command == "next":
+        # 'next' is the sharp edge — two callers in the same (hostname, dir)
+        # partition can receive the same ID because allocation isn't tied to
+        # a write. Nudge callers toward 'taskmd new', which is atomic.
+        print(
+            "warning: 'taskmd next' returns an ID without claiming it; "
+            "two concurrent callers can receive the same ID. "
+            "Prefer 'taskmd new' (stdin for body) unless you have a reason "
+            "to write the file yourself.",
+            file=sys.stderr,
+        )
         n = next_id(tasks_dir)
         if use_json:
             print(success_envelope("next", {"next_id": n}))
         else:
             print(n)
+
+    elif command == "new":
+        slug = opts["slug"]
+        artifact = opts["artifact"]
+        priority = opts["priority"] or "p2"
+        status = opts["status"] or "ready"
+
+        missing = []
+        if not slug:
+            missing.append("--slug")
+        if not artifact:
+            missing.append("--artifact")
+        if missing:
+            msg = f"'new' requires {' and '.join(missing)}"
+            if use_json:
+                print(error_envelope(
+                    "new",
+                    [msg],
+                    suggestions=[
+                        "taskmd new --slug my-task --artifact src/foo.py [--priority p2] [--status ready] < body.md",
+                        "Body is read from stdin; omit stdin for a template skeleton.",
+                    ],
+                ))
+            else:
+                print(f"Error: {msg}", file=sys.stderr)
+                print("Run 'taskmd --help' for usage.", file=sys.stderr)
+            sys.exit(1)
+
+        if priority not in VALID_PRIORITIES:
+            msg = f"invalid priority '{priority}' (valid: {', '.join(sorted(VALID_PRIORITIES))})"
+            if use_json:
+                print(error_envelope("new", [msg]))
+            else:
+                print(f"Error: {msg}", file=sys.stderr)
+            sys.exit(1)
+        if status not in VALID_STATUSES:
+            msg = f"invalid status '{status}' (valid: {', '.join(sorted(VALID_STATUSES))})"
+            if use_json:
+                print(error_envelope("new", [msg]))
+            else:
+                print(f"Error: {msg}", file=sys.stderr)
+            sys.exit(1)
+
+        # Body is required. Detect the interactive-tty case up front so the
+        # caller gets a specific, actionable error instead of the generic
+        # "body is required" from core. Empty piped stdin still falls
+        # through to core's validation.
+        if sys.stdin.isatty():
+            msg = "'new' requires a task body on stdin"
+            if use_json:
+                print(error_envelope(
+                    "new",
+                    [msg],
+                    suggestions=[
+                        "echo 'what this task is about' | taskmd new --slug ... --artifact ...",
+                        "cat body.md | taskmd new --slug ... --artifact ...",
+                        "A task with no body is a placeholder — if you cannot describe it, do not create it yet.",
+                    ],
+                ))
+            else:
+                print(f"Error: {msg} (pipe a description on stdin)", file=sys.stderr)
+                print("  echo 'what this task is about' | taskmd new --slug ... --artifact ...", file=sys.stderr)
+            sys.exit(1)
+
+        body = sys.stdin.read()
+
+        try:
+            result = create_task(
+                tasks_dir,
+                slug=slug,
+                artifact=artifact,
+                priority=priority,
+                status=status,
+                body=body,
+            )
+        except RuntimeError as e:
+            msg = str(e)
+            # Only offer suggestions that actually match the underlying error,
+            # otherwise the output misleads (e.g. "Run taskmd init" shown for
+            # a body-missing failure).
+            suggestions: list[str] = []
+            if "tasks directory does not exist" in msg:
+                suggestions.append("Run 'taskmd init' first")
+            if "body is required" in msg:
+                suggestions.append(
+                    "Pipe a description on stdin: echo 'desc' | taskmd new --slug ... --artifact ..."
+                )
+            if use_json:
+                print(error_envelope("new", [msg], suggestions=suggestions or None))
+            else:
+                print(f"Error: {msg}", file=sys.stderr)
+            sys.exit(1)
+
+        if use_json:
+            print(success_envelope(
+                "new",
+                {
+                    "id": result.id,
+                    "path": str(result.path),
+                    "filename": result.filename,
+                },
+            ))
+        else:
+            print(f"created {result.path}")
 
     elif command == "list":
         tasks = list_tasks(tasks_dir)
