@@ -103,7 +103,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
         "new": {
             "description": "Create a new task atomically: allocate next ID, synthesize frontmatter, and write the file in one step. This is the recommended way to create tasks — prefer it over 'next' + manual file writes. Body is REQUIRED on stdin — a task with no description is a placeholder that inflates triage surface area.",
             "args": {
-                "tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"},
+                "tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"},
                 "--slug": {"type": "string", "required": True, "description": "URL-safe slug (e.g. 'fix-login-bug'). Dirty input is normalized via derive_slug."},
                 "--artifact": {"type": "string", "required": True, "description": "The concrete output this task produces (file path, config change, commit). Required — if you cannot name one, the task probably should not exist."},
                 "--priority": {"type": "string", "default": "p2", "values": sorted(VALID_PRIORITIES)},
@@ -121,7 +121,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "args": {
                 "id": {"type": "string", "required": True, "description": "Task ID (e.g. '34042'). Look it up with 'taskmd list' if you don't know it."},
                 "new_status": {"type": "string", "required": True, "values": sorted(VALID_STATUSES), "description": "Target status. Must be a valid status."},
-                "tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"},
+                "tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"},
             },
             "output": "{id, old_filename, new_filename, old_status, new_status}",
             "examples": [
@@ -132,24 +132,24 @@ def schema(compact: bool = False) -> dict[str, Any]:
         },
         "validate": {
             "description": "Check all task files for consistency",
-            "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
+            "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"}},
             "output": "ValidationResult with errors[] and file_count",
         },
         "fix": {
             "description": "Auto-repair fixable issues (missing dates, mismatched filenames, legacy ID formats, duplicate task IDs)",
-            "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
+            "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"}},
             "output": "FixResult with patches[], renames[], migrated count, renumbered[] (old_id/new_id/old_filename/new_filename for each duplicate-ID loser — cross-references NOT auto-patched), errors[]",
         },
         "next": {
             "description": "Print the next available task ID (prefix derived from hostname + directory path). DISCOURAGED: this is a read-only advisory that doesn't claim the ID — two concurrent callers can receive the same ID. Prefer 'taskmd new' for creation; use 'next' only for integrations that must do their own write path.",
-            "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"}},
+            "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"}},
             "output": "Task ID string (5-digit numeric DDNNN format)",
             "prefer_instead": "new",
         },
         "list": {
             "description": "List all task files with metadata",
             "args": {
-                "tasks_dir": {"type": "path", "default": "./tasks or ./tasksmd"},
+                "tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"},
                 "--status": {"type": "string", "description": "Filter by status"},
                 "--priority": {"type": "string", "description": "Filter by priority"},
             },

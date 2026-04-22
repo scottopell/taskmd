@@ -35,7 +35,7 @@ from taskmd.core import (
     validate,
 )
 
-_DEFAULT_DIRS = ("tasks", "tasksmd")
+_DEFAULT_DIRS = ("tasks", "taskmds")
 
 _HELP_TEXT = """\
 Usage: taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
@@ -60,7 +60,7 @@ Options:
   --status S        (new, list) Status (default: ready for 'new')
 
 Arguments:
-  tasks_dir         Path to tasks directory (default: ./tasks or ./tasksmd)
+  tasks_dir         Path to tasks directory (default: ./tasks or ./taskmds)
 
 Creating a task:
   echo "what this task is about" | taskmd new --slug fix-login --artifact src/auth.py

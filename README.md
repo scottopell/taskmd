@@ -45,7 +45,7 @@ taskmd list --status ready --priority p0                                        
 
 `taskmd new` is the recommended way to create tasks — it allocates the ID, formats the filename, synthesizes the frontmatter, and writes the file in one atomic step. The body is required on stdin; a task with no description is a placeholder that pollutes triage. `taskmd next` exists for integrations that need just an ID string, but it's a sharp edge (two concurrent callers can receive the same ID).
 
-All commands auto-detect `./tasks` or `./tasksmd` as the default directory. Pass a path to override.
+All commands auto-detect `./tasks` or `./taskmds` as the default directory. Pass a path to override.
 
 ## Agent mode
 
