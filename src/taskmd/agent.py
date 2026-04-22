@@ -66,7 +66,7 @@ def success_envelope(command: str, data: Any, **metadata: Any) -> str:
     }
     if metadata:
         obj["metadata"] = metadata
-    return json.dumps(obj, indent=2, default=str, sort_keys=True)
+    return json.dumps(obj, separators=(",", ":"), default=str, sort_keys=True)
 
 
 def error_envelope(
@@ -82,7 +82,7 @@ def error_envelope(
     }
     if suggestions:
         obj["suggestions"] = suggestions
-    return json.dumps(obj, indent=2, default=str, sort_keys=True)
+    return json.dumps(obj, separators=(",", ":"), default=str, sort_keys=True)
 
 
 # ---------------------------------------------------------------------------
@@ -275,4 +275,4 @@ def schema(compact: bool = False) -> dict[str, Any]:
 
 def schema_json(compact: bool = False) -> str:
     """Return the schema as a formatted JSON string."""
-    return json.dumps(schema(compact), indent=2, sort_keys=True)
+    return json.dumps(schema(compact), separators=(",", ":"), sort_keys=True)
