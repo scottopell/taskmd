@@ -85,12 +85,28 @@ Changing status:
 
 
 def _resolve_tasks_dir() -> Path:
-    """Return the first existing candidate directory, or 'tasks' as fallback."""
-    for name in _DEFAULT_DIRS:
+    """Return the first existing candidate directory, or 'tasks' as fallback.
+
+    Checks `taskmds/` before `tasks/` — `taskmds/` is taskmd-specific,
+    while `tasks/` is a generic name often taken by other tools (invoke, make).
+    """
+    for name in reversed(_DEFAULT_DIRS):
         p = Path(name)
         if p.is_dir():
             return p
     return Path(_DEFAULT_DIRS[0])
+
+
+def _resolve_init_dir() -> Path:
+    """Return the default dir to create on `init`.
+
+    Prefers `tasks/` but falls through to `taskmds/` if `tasks/` is already
+    taken (e.g. by another tool in the repo).
+    """
+    primary = Path(_DEFAULT_DIRS[0])
+    if primary.exists():
+        return Path(_DEFAULT_DIRS[1])
+    return primary
 
 
 def _parse_args(argv: list[str]) -> dict:
@@ -210,7 +226,7 @@ def main(argv: list[str] | None = None) -> None:
     command = opts["command"]
 
     if command == "init":
-        tasks_dir = opts["tasks_dir"] or Path(_DEFAULT_DIRS[0])
+        tasks_dir = opts["tasks_dir"] or _resolve_init_dir()
         result = init(tasks_dir)
         if use_json:
             if result.ok:
