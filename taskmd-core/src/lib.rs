@@ -4,10 +4,12 @@
 //!   - Task ID generation (numeric DDNNN format with hostname+directory prefix)
 //!   - Filename parsing, formatting, and pattern constant
 //!   - Slug derivation
-//!   - Frontmatter parsing
 //!   - Task file listing, searching, and renaming
 //!   - Corpus validation and auto-fix
 //!   - Tasks directory initialisation
+//!
+//! The filename is the sole source of truth for task metadata (id, priority,
+//! status, slug). Files have no frontmatter — the body is free-form markdown.
 //!
 //! # Usage (Rust)
 //!
@@ -21,11 +23,9 @@
 
 pub mod constants;
 pub mod create;
-pub mod date;
 pub mod error;
 pub mod filename;
 pub mod fix;
-pub mod frontmatter;
 pub mod ids;
 pub mod init;
 pub mod tasks;

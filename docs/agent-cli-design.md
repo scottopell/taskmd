@@ -59,7 +59,7 @@ without reading external docs.
 The schema should include:
 - Command names, flags, types, and defaults
 - Valid statuses and priorities (from the source of truth in core.py)
-- Task file format spec (filename pattern, frontmatter fields)
+- Task file format spec (filename pattern; bodies are free-form markdown)
 - Example workflows
 - Common anti-patterns to avoid
 
@@ -70,11 +70,11 @@ Offer a `--compact` variant for token-constrained agents.
 Don't rely on agents finding and reading documentation files. Bake guidance
 directly into the schema output:
 
-- **Workflows**: "To triage tasks: `taskmd list`, review priorities, edit
-  frontmatter, `taskmd fix`"
-- **Anti-patterns**: "Don't rename task files directly -- edit frontmatter and
-  run `taskmd fix`"
-- **Format spec**: full filename pattern and valid field values
+- **Workflows**: "To triage tasks: `taskmd list`, review priorities, then
+  `taskmd status <id> <new-status>` to move a task forward"
+- **Anti-patterns**: "Don't hand-craft filenames — use `taskmd new`. Don't
+  pattern-match IDs from disk; that's the #1 cause of duplicate-ID bugs."
+- **Format spec**: full filename pattern and valid status/priority values
 
 This is the single biggest win from pup's design. An agent that calls
 `taskmd --help --agent` should have everything it needs to use the tool
@@ -94,7 +94,7 @@ In agent mode, structure this as data:
   "value": "started",
   "message": "invalid status",
   "valid_values": ["ready", "in-progress", "blocked", "done", "wont-do", "brainstorming"],
-  "fix": "Edit the 'status' field in the file's YAML frontmatter"
+  "fix": "Use 'taskmd status <id> <new-status>' with one of the valid values"
 }
 ```
 

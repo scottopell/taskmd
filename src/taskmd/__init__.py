@@ -12,7 +12,6 @@ CLI interface:
 """
 
 from taskmd.core import (
-    VALID_FIELDS,
     VALID_PRIORITIES,
     VALID_STATUSES,
     CreateResult,
@@ -38,7 +37,6 @@ __all__ = [
     "get_expected_filename",
     "VALID_STATUSES",
     "VALID_PRIORITIES",
-    "VALID_FIELDS",
     "ValidationResult",
     "FixResult",
     "CreateResult",

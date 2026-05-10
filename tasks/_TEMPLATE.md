@@ -1,9 +1,3 @@
----
-created: YYYY-MM-DD
-priority: p2
-status: ready
-artifact: path/to/file-or-system-change
----
 # Task Title
 
 ## Summary

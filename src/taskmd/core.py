@@ -1,9 +1,4 @@
-"""taskmd core library — thin Python shim over the taskmd._core Rust extension.
-
-The public API (dataclasses, function signatures, constants) is unchanged.
-All logic lives in taskmd._core (compiled from taskmd-py/src/lib.rs via
-taskmd-core/).
-"""
+"""taskmd core library — thin Python shim over the taskmd._core Rust extension."""
 
 from __future__ import annotations
 
@@ -14,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from taskmd._core import (  # type: ignore[import]
     FILENAME_PATTERN as _FILENAME_PATTERN,
-    VALID_FIELDS as _VALID_FIELDS,
     VALID_PRIORITIES as _VALID_PRIORITIES,
     VALID_STATUSES as _VALID_STATUSES,
     derive_slug,
@@ -28,7 +22,6 @@ from taskmd._core import (  # type: ignore[import]
     needs_migration as _needs_migration_raw,
     list_tasks as _list_tasks,
     next_id as _next_id,
-    parse_frontmatter as _parse_frontmatter_str,
     parse_id_parts as _parse_id_parts_raw,
     parse_task_file as _parse_task_file,
     prefix_for as _prefix_for_raw,
@@ -46,26 +39,24 @@ if TYPE_CHECKING:
 
 VALID_STATUSES: frozenset[str] = frozenset(_VALID_STATUSES)
 VALID_PRIORITIES: frozenset[str] = frozenset(_VALID_PRIORITIES)
-VALID_FIELDS: frozenset[str] = frozenset(_VALID_FIELDS)
 
 # Compiled from the canonical Rust constant — single definition, always in sync.
 _FILENAME_RE = re.compile(_FILENAME_PATTERN)
 
 # ---------------------------------------------------------------------------
-# Data types  (kept in Python for backwards-compatible attribute access)
+# Data types
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class TaskFile:
-    """Parsed representation of a task file."""
+    """Parsed representation of a task file. All fields come from the filename."""
 
     path: Path
     id: str
     priority: str
     status: str
     slug: str
-    fields: dict[str, str]
 
 
 @dataclass
@@ -84,17 +75,18 @@ class ValidationResult:
 class FixResult:
     """Result of fixing a tasks directory."""
 
-    patched: int = 0
     renamed: int = 0
     migrated: int = 0
-    patches: list[tuple[str, str]] = field(default_factory=list)
     renames: list[tuple[str, str]] = field(default_factory=list)
-    # Each entry: (old_id, new_id, old_filename, new_filename). These are
-    # files whose ID collided with another file's; the "loser" gets a fresh
-    # ID while the "winner" (picked by git-first-seen → mtime → filename)
-    # keeps the original. Cross-references to old_id elsewhere in the repo
-    # are NOT rewritten — grep this list and patch callers yourself.
+    # Each entry: (old_id, new_id, old_filename, new_filename).
     renumbered: list[tuple[str, str, str, str]] = field(default_factory=list)
+    # Filenames whose YAML frontmatter was stripped (only populated when
+    # `migrate=True` was passed). Empty otherwise.
+    frontmatter_stripped: list[str] = field(default_factory=list)
+    # Filenames detected as having frontmatter when `migrate=None` (the
+    # default "prompt" mode). When non-empty, `errors` will contain a single
+    # message pointing the user at --migrate / --no-migrate.
+    frontmatter_pending: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -102,8 +94,12 @@ class FixResult:
         return len(self.errors) == 0
 
     def summary(self) -> str:
-        """Human-readable summary — delegates to the canonical Rust implementation."""
-        return _fix_summary(self.patched, self.renamed, self.migrated, len(self.renumbered))
+        return _fix_summary(
+            self.renamed,
+            self.migrated,
+            len(self.renumbered),
+            len(self.frontmatter_stripped),
+        )
 
 
 @dataclass
@@ -112,7 +108,6 @@ class InitResult:
 
     tasks_dir: Path
     created: list[str] = field(default_factory=list)
-    template_fields: list[str] = field(default_factory=list)
     error: str | None = None
 
     @property
@@ -135,29 +130,20 @@ class CreateResult:
 
 
 def _parse_id_parts(task_id: str) -> tuple[str, int]:
-    """Decompose a task ID into (prefix, sequence_number)."""
     prefix, seq = _parse_id_parts_raw(task_id)
     return (prefix, int(seq))
 
 
 def _prefix_for(tasks_dir: Path | str) -> str:
-    """Derive a deterministic 2-digit prefix from hostname + tasks dir realpath."""
     return _prefix_for_raw(str(tasks_dir))
 
 
 def _needs_migration(task_id: str, expected_prefix: str) -> bool:
-    """True if a task ID needs migration to the expected prefix."""
     return _needs_migration_raw(task_id, expected_prefix)
 
 
 def _task_files(tasks_dir: Path | str) -> list[Path]:
-    """Return main task .md files (excluding template and ancillary), sorted."""
     return [Path(p) for p in _task_files_raw(str(tasks_dir))]
-
-
-def _parse_frontmatter(path: Path) -> dict[str, str]:
-    """Read a file and return its frontmatter fields."""
-    return _parse_frontmatter_str(path.read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +158,6 @@ def _dict_to_task(d: _TaskDict) -> TaskFile:
         priority=d["priority"],
         status=d["status"],
         slug=d["slug"],
-        fields=d["fields"],
     )
 
 
@@ -192,7 +177,7 @@ def get_expected_filename(task_id: str, priority: str, status: str, slug: str) -
 
 
 def parse_task_file(path: Path) -> TaskFile | None:
-    """Parse a task file's filename and frontmatter. Returns None if not a task file."""
+    """Parse a task filename. Returns None if it doesn't match the pattern."""
     d = _parse_task_file(str(path))
     return None if d is None else _dict_to_task(d)
 
@@ -211,7 +196,7 @@ def find_task_by_id(tasks_dir: Path | str, task_id: str) -> TaskFile | None:
 def rename_status(
     tasks_dir: Path | str, task_id: str, new_status: str
 ) -> tuple[str, str]:
-    """Change a task's status: update frontmatter then rename the file.
+    """Change a task's status by renaming the file.
 
     Returns ``(old_filename, new_filename)``.
     Raises ``RuntimeError`` if the task is not found or the target already exists.
@@ -225,17 +210,29 @@ def validate(tasks_dir: Path | str = "tasks") -> ValidationResult:
     return ValidationResult(errors=d["errors"], file_count=d["file_count"])
 
 
-def fix(tasks_dir: Path | str = "tasks") -> FixResult:
-    """Auto-fix task files: inject missing 'created', rename to match frontmatter,
-    and renumber duplicate task IDs."""
-    d = _fix(str(Path(tasks_dir)))
+def fix(
+    tasks_dir: Path | str = "tasks",
+    *,
+    migrate: bool | None = None,
+) -> FixResult:
+    """Auto-fix task files: optionally strip legacy frontmatter, migrate legacy
+    IDs, and renumber duplicate IDs.
+
+    ``migrate`` controls how legacy YAML frontmatter is handled:
+      - ``None`` (default): refuse to run if any file has frontmatter, returning
+        an error pointing the user at ``migrate=True`` or ``migrate=False``.
+      - ``True``: strip frontmatter from every file that has it. Destructive —
+        commit before running.
+      - ``False``: skip the frontmatter check entirely.
+    """
+    d = _fix(str(Path(tasks_dir)), migrate)
     return FixResult(
-        patched=d["patched"],
         renamed=d["renamed"],
         migrated=d["migrated"],
-        patches=[tuple(p) for p in d["patches"]],
         renames=[tuple(r) for r in d["renames"]],
         renumbered=[tuple(r) for r in d["renumbered"]],
+        frontmatter_stripped=list(d["frontmatter_stripped"]),
+        frontmatter_pending=list(d["frontmatter_pending"]),
         errors=d["errors"],
     )
 
@@ -246,7 +243,6 @@ def init(tasks_dir: Path | str = "tasks") -> InitResult:
     return InitResult(
         tasks_dir=Path(d["tasks_dir"]),
         created=d["created"],
-        template_fields=d["template_fields"],
         error=d["error"],
     )
 
@@ -255,16 +251,15 @@ def create_task(
     tasks_dir: Path | str,
     *,
     slug: str,
-    artifact: str,
+    body: str,
     priority: str = "p2",
     status: str = "ready",
-    body: str = "",
 ) -> CreateResult:
-    """Atomically allocate an ID, synthesize frontmatter, and write a new task file.
+    """Atomically allocate an ID and write a new task file containing only `body`.
 
-    Raises ``RuntimeError`` on invalid input, missing tasks dir, or collision
-    exhaustion.  Does not depend on the caller having first run
-    ``taskmd next`` — the ID is allocated and claimed as a single operation.
+    `body` is required and must be non-empty (after trimming whitespace) — a
+    task with no description is a placeholder. Raises ``RuntimeError`` if it's
+    missing or whitespace-only.
     """
-    d = _create(str(Path(tasks_dir)), priority, status, slug, artifact, body)
+    d = _create(str(Path(tasks_dir)), priority, status, slug, body)
     return CreateResult(id=d["id"], path=Path(d["path"]), filename=d["filename"])

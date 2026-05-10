@@ -1,6 +1,6 @@
 [package]
 name = "taskmd-py"
-version = "0.1.0"
+version = "1.0.0-rc1"
 edition = "2021"
 description = "PyO3 Python extension for taskmd-core"
 license = "MIT"

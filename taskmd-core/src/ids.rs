@@ -320,10 +320,7 @@ mod tests {
     /// Helper: write a minimal task file with a given ID into a directory.
     fn write_task_file(dir: &Path, id: &str) {
         let filename = format!("{id}-p2-ready--test.md");
-        let content = format!(
-            "---\ncreated: 2026-01-01\npriority: p2\nstatus: ready\n---\n"
-        );
-        std::fs::write(dir.join(filename), content).unwrap();
+        std::fs::write(dir.join(filename), "# task body\n").unwrap();
     }
 
     // -- Bug 4: next_id should scope sequence scan to local prefix --

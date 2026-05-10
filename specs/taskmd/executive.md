@@ -3,26 +3,26 @@
 ## Requirements Summary
 
 task.md is a markdown-native task management system for developer projects.
-Each task is a single markdown file in a `tasks/` directory with metadata encoded in the
-filename (`NNNN-pX-status--slug.md`) and YAML frontmatter as the source of truth.
-Six statuses (ready, in-progress, blocked, done, wont-do, brainstorming) and five
-priority levels (p0 highest through p4 lowest) cover the full task lifecycle.
-Validation enforces consistency between filenames and frontmatter, detects duplicate
-task numbers, and checks required fields.
-Auto-fix repairs common issues without manual intervention.
-A `next` command prints the next available task number for agents and humans.
-Ancillary files (QA plans, QA reports) live alongside tasks using a dot convention.
-The entire system is a single Python script with no external dependencies.
+Each task is a single markdown file in a `tasks/` directory; the filename
+(`DDNNN-pX-status--slug.md`) is the sole source of truth for task metadata.
+The body is free-form markdown — there is no YAML frontmatter. Six statuses
+(ready, in-progress, blocked, done, wont-do, brainstorming) and five priority
+levels (p0 highest through p4 lowest) cover the full task lifecycle. Validation
+checks filenames for the canonical pattern and detects duplicate task numbers.
+Auto-fix migrates legacy ID formats and renumbers duplicate IDs without manual
+intervention. A `next` command prints the next available task number, and
+`new` allocates an ID and writes the file in one atomic step. Ancillary files
+(QA plans, QA reports) live alongside tasks using a dot convention.
 
 ## Technical Summary
 
-Single-file Python CLI (`taskmd.py`), stdlib only.
-No database — the filesystem is the data store, git is the audit trail.
-Frontmatter parsing uses `partition(":")` for colon-safe key-value extraction.
-Filename format: `NNNN-pX-status--slug.md` with double-dash separating status from slug
-for visual clarity. Date inference falls through git log, file mtime, then today’s date.
-Ancillary file detection uses a second-dot-segment pattern to skip `.qaplan.md` and
-`.qareport.md` consistently in both validate and fix.
+Python CLI wrapping a Rust core (taskmd-core) via PyO3. No database — the
+filesystem is the data store, git is the audit trail. The filename grammar
+(`DDNNN-pX-status--slug.md`) is the only metadata schema; tasks have no
+frontmatter and the body is opaque. Status transitions are pure file renames.
+Ancillary file detection uses a second-dot-segment pattern to skip `.qaplan.md`
+and `.qareport.md` consistently in both validate and fix. Duplicate-ID
+renumbering picks a winner via git-first-seen → mtime → lexicographic filename.
 
 ## Status Summary
 
@@ -30,7 +30,7 @@ Ancillary file detection uses a second-dot-segment pattern to skip `.qaplan.md` 
 | --- | --- | --- |
 | **REQ-TM-001:** View Tasks Without Tooling | ❌ Not Started | File-per-task, metadata in filename |
 | **REQ-TM-002:** Query Tasks by Status and Priority | ❌ Not Started | `NNNN-pX-status--slug.md` format |
-| **REQ-TM-003:** Unambiguous Task State | ❌ Not Started | Frontmatter as source of truth |
+| **REQ-TM-003:** Unambiguous Task State | ❌ Not Started | Filename is the sole source of truth (no frontmatter) |
 | **REQ-TM-004:** Catch Inconsistencies Before Merge | ❌ Not Started | validate command |
 | **REQ-TM-005:** Repair Common Issues Automatically | ❌ Not Started | fix command |
 | **REQ-TM-006:** Discover Next Available Task Number | ❌ Not Started | next command |

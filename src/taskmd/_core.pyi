@@ -7,7 +7,6 @@ from typing import Optional, TypedDict
 FILENAME_PATTERN: str
 VALID_STATUSES: list[str]
 VALID_PRIORITIES: list[str]
-VALID_FIELDS: list[str]
 
 # ── Internal helpers (used by test suite and core.py) ────────────────────────
 
@@ -23,10 +22,6 @@ def next_id(tasks_dir: str) -> str: ...
 def get_expected_filename(id: str, priority: str, status: str, slug: str) -> str: ...
 def derive_slug(title: str) -> str: ...
 
-# ── Frontmatter ───────────────────────────────────────────────────────────────
-
-def parse_frontmatter(content: str) -> dict[str, str]: ...
-
 # ── Task file operations ──────────────────────────────────────────────────────
 
 class TaskDict(TypedDict):
@@ -35,7 +30,6 @@ class TaskDict(TypedDict):
     priority: str
     status: str
     slug: str
-    fields: dict[str, str]
 
 def parse_task_file(path: str) -> Optional[TaskDict]: ...
 def list_tasks(tasks_dir: str) -> list[TaskDict]: ...
@@ -52,26 +46,27 @@ def validate(tasks_dir: str) -> ValidateDict: ...
 
 # ── Fix ───────────────────────────────────────────────────────────────────────
 
-def fix_summary(patched: int, renamed: int, migrated: int, renumbered: int) -> str: ...
+def fix_summary(
+    renamed: int, migrated: int, renumbered: int, frontmatter_stripped: int
+) -> str: ...
 
 class FixDict(TypedDict):
-    patched: int
     renamed: int
     migrated: int
-    patches: list[tuple[str, str]]
     renames: list[tuple[str, str]]
     # Each tuple is (old_id, new_id, old_filename, new_filename).
     renumbered: list[tuple[str, str, str, str]]
+    frontmatter_stripped: list[str]
+    frontmatter_pending: list[str]
     errors: list[str]
 
-def do_fix(tasks_dir: str) -> FixDict: ...
+def do_fix(tasks_dir: str, migrate: Optional[bool] = None) -> FixDict: ...
 
 # ── Init ──────────────────────────────────────────────────────────────────────
 
 class InitDict(TypedDict):
     tasks_dir: str
     created: list[str]
-    template_fields: list[str]
     error: Optional[str]
 
 def do_init(tasks_dir: str) -> InitDict: ...
@@ -88,6 +83,5 @@ def do_create(
     priority: str,
     status: str,
     slug: str,
-    artifact: str,
     body: str,
 ) -> CreateDict: ...

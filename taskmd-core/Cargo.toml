@@ -1,18 +1,15 @@
 [package]
 name = "taskmd-core"
-version = "0.1.0"
+version = "1.0.0-rc1"
 edition = "2021"
 description = "Core logic for taskmd — Markdown-native task management"
 license = "MIT"
 
 # Pure Rust library — no PyO3 dependency.
-# Phoenix IDE (and any other Rust consumer) depends on this crate directly.
-# The Python extension lives in taskmd-py/ and depends on this crate.
 [lib]
 name = "taskmd_core"
 
 [dependencies]
-chrono     = { version = "0.4", features = ["clock"], default-features = false }
 gethostname = "1"
 sha2       = "0.10"
 regex      = "1"

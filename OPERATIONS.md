@@ -14,9 +14,11 @@ anchor).
 # 1. Pick the version. See "Versioning" below.
 NEW=0.2.0
 
-# 2. Bump pyproject.toml. Cargo manifests are NOT bumped — the two Rust
-#    crates are internal and never published to crates.io.
+# 2. Bump pyproject.toml AND both Cargo manifests in lockstep.
 sed -i '' "s/^version = \".*\"/version = \"$NEW\"/" pyproject.toml
+sed -i '' "s/^version = \".*\"/version = \"$(echo $NEW | sed 's/rc/-rc/')\"/" \
+    taskmd-core/Cargo.toml taskmd-py/Cargo.toml
+cargo update -p taskmd-core -p taskmd-py
 
 # 3. Commit directly to main.
 git add pyproject.toml
@@ -44,8 +46,8 @@ Semver-ish. The surface area is small, so calibrate mostly by user impact:
   anything agents or humans can newly depend on.
 - **Major** (`0.x.y -> 1.0.0`): breaking CLI/API change — renamed or
   removed commands, changed JSON envelope shape, non-backwards-compatible
-  frontmatter requirements. Don't ship one without a migration note in
-  the release commit body.
+  filename grammar. Don't ship one without a migration note in the
+  release commit body.
 
 If multiple classes of change landed since the last tag, use the highest
 one. Skim `git log v<prev>..main` to categorize.
