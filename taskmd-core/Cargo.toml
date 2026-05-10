@@ -4,6 +4,13 @@ version = "1.0.0-rc1"
 edition = "2021"
 description = "Core logic for taskmd — Markdown-native task management"
 license = "MIT"
+repository = "https://github.com/scottopell/taskmd"
+homepage = "https://github.com/scottopell/taskmd"
+readme = "README.md"
+keywords = ["task", "markdown", "cli", "productivity", "todo"]
+categories = ["command-line-utilities", "filesystem"]
+authors = ["Scott Opell <me@scottopell.com>"]
+rust-version = "1.75"
 
 # Pure Rust library — no PyO3 dependency.
 [lib]

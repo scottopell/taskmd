@@ -74,7 +74,7 @@ What needs to be done.
 - [ ] Second criterion
 ```
 
-The filename is the **only** source of truth. There's no YAML frontmatter — the body is free-form markdown.
+The filename is the **only** source of truth. The body is free-form markdown.
 
 **Statuses:** ready, in-progress, blocked, done, wont-do, brainstorming
 

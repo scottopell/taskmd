@@ -9,7 +9,7 @@
 //!   - Tasks directory initialisation
 //!
 //! The filename is the sole source of truth for task metadata (id, priority,
-//! status, slug). Files have no frontmatter — the body is free-form markdown.
+//! status, slug). Bodies are free-form markdown.
 //!
 //! # Usage (Rust)
 //!

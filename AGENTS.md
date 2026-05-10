@@ -39,8 +39,7 @@ This project uses itself for task management.
 - `pX`: Priority (p0 highest)
 - `status`: ready, in-progress, blocked, done, wont-do, brainstorming
 
-The filename is the only source of truth. Task files have no frontmatter — the
-body is free-form markdown.
+The filename is the only source of truth. Task bodies are free-form markdown.
 
 Set `TASKMD_MACHINE_ID=0` to pin D1 on your primary machine.
 

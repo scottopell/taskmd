@@ -67,8 +67,8 @@ Creating a task:
   echo "what this task is about" | taskmd new --slug fix-login
   cat body.md                    | taskmd new --slug fix-login --priority p1
 
-  A task body is REQUIRED on stdin. The body is written verbatim — task files
-  have no frontmatter; all metadata lives in the filename.
+  A task body is REQUIRED on stdin. The body is written verbatim; all
+  metadata lives in the filename.
 
 Changing status:
   taskmd status 34042 in-progress

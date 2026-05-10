@@ -154,7 +154,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
 
     s: dict[str, Any] = {
         "name": "taskmd",
-        "description": "Markdown-native task management. Each task is a file. The filename encodes all metadata; the body is free-form markdown with no frontmatter. No database, no config — the filesystem is the data store, git is the audit trail.",
+        "description": "Markdown-native task management. Each task is a file. The filename encodes all metadata; the body is free-form markdown. No database, no config — the filesystem is the data store, git is the audit trail.",
         "global_flags": {
             "--agent": {"description": "Force agent mode (JSON output, structured --help)"},
             "--output": {"type": "json|text", "default": "text (json in agent mode)"},
@@ -166,7 +166,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "filename_pattern": "DDNNN-pX-status--slug.md",
             "id_format": "D1 = hostname-derived digit, D2 = directory-derived digit, NNN = 3-digit sequence (see environment_variables for overrides)",
             "example": "34042-p2-ready--fix-the-bug.md",
-            "body": "Free-form markdown. No frontmatter — all task metadata lives in the filename.",
+            "body": "Free-form markdown. All task metadata lives in the filename.",
         },
         "valid_statuses": sorted(VALID_STATUSES),
         "valid_priorities": sorted(VALID_PRIORITIES),
@@ -189,7 +189,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
 
     s["guidance"] = [
         "Use 'taskmd new' to create tasks. Do NOT hand-craft filenames or pattern-match ID prefixes you see on disk — 'new' allocates the ID, formats the filename, and writes the file atomically. Mimicking an on-disk ID is the #1 cause of duplicate-ID bugs.",
-        "Tasks are markdown files with no frontmatter. The filename encodes id, priority, status, and slug. After 'new' creates them, edit the body directly — that's the primary interface.",
+        "Tasks are markdown files. The filename encodes id, priority, status, and slug. After 'new' creates them, edit the body directly — that's the primary interface.",
         "A task tracks work blocked by something: user input, a different environment, passage of time, or an unmade decision. If nothing blocks you from doing it now, just do it instead of creating a task.",
         "To change a task's status, use 'taskmd status <id> <new-status>' — it renames the file atomically.",
     ]
