@@ -1,11 +1,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::constants::{VALID_FIELDS, VALID_PRIORITIES, VALID_STATUSES};
-use crate::filename::{format_filename, parse_filename};
-use crate::frontmatter::{has_valid_frontmatter, parse_frontmatter_str, FRONTMATTER_OPEN};
+use crate::filename::parse_filename;
 use crate::tasks::task_files;
-use crate::util::{is_valid_date, normalize_line_endings};
 
 pub struct ValidationResult {
     pub errors: Vec<String>,
@@ -25,7 +22,7 @@ pub fn validate(tasks_dir: &Path) -> ValidationResult {
     };
 
     if !tasks_dir.exists() {
-        return result; // empty directory is valid
+        return result; // empty/missing directory is valid
     }
 
     let files = match task_files(tasks_dir) {
@@ -47,104 +44,15 @@ pub fn validate(tasks_dir: &Path) -> ValidationResult {
             .to_string_lossy()
             .to_string();
 
-        let content = match std::fs::read_to_string(path) {
-            Ok(c) => normalize_line_endings(&c).into_owned(),
-            Err(e) => {
-                result.errors.push(format!("{name}: cannot read: {e}"));
-                continue;
+        match parse_filename(&name) {
+            Some((id, _, _, _)) => {
+                id_map.entry(id).or_default().push(name);
             }
-        };
-
-        if !content.starts_with(FRONTMATTER_OPEN) {
-            result
-                .errors
-                .push(format!("{name}: missing YAML frontmatter (must start with ---)"));
-            continue;
-        }
-
-        if !has_valid_frontmatter(&content) {
-            result
-                .errors
-                .push(format!("{name}: malformed YAML frontmatter (no closing ---)"));
-            continue;
-        }
-
-        let fields = parse_frontmatter_str(&content);
-
-        // status
-        match fields.get("status").map(|s| s.as_str()) {
-            None => result
-                .errors
-                .push(format!("{name}: missing 'status' field")),
-            Some(s) if !VALID_STATUSES.contains(&s) => result.errors.push(format!(
-                "{name}: invalid status '{s}' (valid: {})",
-                VALID_STATUSES.join(", ")
-            )),
-            _ => {}
-        }
-
-        // priority
-        match fields.get("priority").map(|s| s.as_str()) {
-            None => result
-                .errors
-                .push(format!("{name}: missing 'priority' field")),
-            Some(p) if !VALID_PRIORITIES.contains(&p) => result.errors.push(format!(
-                "{name}: invalid priority '{p}' (valid: {})",
-                VALID_PRIORITIES.join(", ")
-            )),
-            _ => {}
-        }
-
-        // created
-        match fields.get("created").map(|s| s.as_str()) {
-            None => result
-                .errors
-                .push(format!("{name}: missing 'created' field")),
-            Some(d) if !is_valid_date(d) => result.errors.push(format!(
-                "{name}: invalid 'created' date format (expected YYYY-MM-DD)"
-            )),
-            _ => {}
-        }
-
-        // artifact
-        match fields.get("artifact").map(|s| s.as_str()) {
-            None => result.errors.push(format!(
-                "{name}: missing 'artifact' field (what file or system change does this task produce?)"
-            )),
-            Some("") => result.errors.push(format!(
-                "{name}: 'artifact' field is empty (must name a concrete output, e.g. a file path, config change, or commit)"
-            )),
-            _ => {}
-        }
-
-        // unknown fields
-        let mut unknown: Vec<&str> = fields
-            .keys()
-            .map(|k| k.as_str())
-            .filter(|k| !VALID_FIELDS.contains(k))
-            .collect();
-        if !unknown.is_empty() {
-            unknown.sort_unstable();
-            result.errors.push(format!(
-                "{name}: unknown field(s): {} (valid: {})",
-                unknown.join(", "),
-                VALID_FIELDS.join(", ")
-            ));
-        }
-
-        // filename vs frontmatter consistency
-        if let Some((id, _, _, slug)) = parse_filename(&name) {
-            if let (Some(status), Some(priority)) =
-                (fields.get("status"), fields.get("priority"))
-            {
-                let expected = format_filename(&id, priority, status, &slug);
-                if name != expected {
-                    result.errors.push(format!(
-                        "{name}: filename doesn't match frontmatter, expected: {expected}"
-                    ));
-                }
+            None => {
+                result.errors.push(format!(
+                    "{name}: filename doesn't match pattern DDNNN-pX-status--slug.md"
+                ));
             }
-            id_map.entry(id).or_default().push(name.clone());
         }
     }
 

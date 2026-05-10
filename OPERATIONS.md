@@ -44,8 +44,8 @@ Semver-ish. The surface area is small, so calibrate mostly by user impact:
   anything agents or humans can newly depend on.
 - **Major** (`0.x.y -> 1.0.0`): breaking CLI/API change — renamed or
   removed commands, changed JSON envelope shape, non-backwards-compatible
-  frontmatter requirements. Don't ship one without a migration note in
-  the release commit body.
+  filename grammar. Don't ship one without a migration note in the
+  release commit body.
 
 If multiple classes of change landed since the last tag, use the highest
 one. Skim `git log v<prev>..main` to categorize.

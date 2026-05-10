@@ -2,7 +2,7 @@
 
 Usage:
     taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
-    taskmd new --slug S --artifact A [--priority P] [--status ST] [tasks/] < body.md
+    taskmd new --slug S [--priority P] [--status ST] [tasks/] < body.md
     taskmd status <id> <new-status> [tasks/]
     taskmd validate [tasks/]
     taskmd fix [tasks/]
@@ -42,10 +42,10 @@ Usage: taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
 
 Commands:
   init       Create a new tasks directory with a template file
-  new        Create a new task atomically (ID + filename + frontmatter + write)
-  status     Change a task's status atomically (updates frontmatter + renames file)
-  validate   Check all task files for consistency
-  fix        Auto-repair fixable issues (missing dates, mismatched filenames, legacy naming)
+  new        Create a new task atomically (ID + filename + body write)
+  status     Change a task's status atomically (renames the file)
+  validate   Check all task filenames for consistency
+  fix        Auto-repair fixable issues (legacy ID formats, duplicate IDs)
   next       Print the next available task ID (advisory; prefer 'new' for creation)
   list       List all task files with metadata
 
@@ -55,7 +55,6 @@ Options:
   --output FMT      Output format: json or text (default: text, json in agent mode)
   --compact         With --help in agent mode: minimal schema (fewer tokens)
   --slug S          (new) URL-safe slug; dirty input is normalized. Required.
-  --artifact A      (new) Concrete output the task produces (file path, commit, etc.). Required.
   --priority P      (new, list) Priority (default: p2 for 'new')
   --status S        (new, list) Status (default: ready for 'new')
 
@@ -63,33 +62,28 @@ Arguments:
   tasks_dir         Path to tasks directory (default: ./tasks or ./taskmds)
 
 Creating a task:
-  echo "what this task is about" | taskmd new --slug fix-login --artifact src/auth.py
-  cat body.md                    | taskmd new --slug fix-login --artifact src/auth.py --priority p1
+  echo "what this task is about" | taskmd new --slug fix-login
+  cat body.md                    | taskmd new --slug fix-login --priority p1
 
-  A task body is REQUIRED on stdin. A task without a description is a
-  placeholder, and placeholders inflate the triage surface area.
+  A task body is REQUIRED on stdin. The body is written verbatim — task files
+  have no frontmatter; all metadata lives in the filename.
 
 Changing status:
   taskmd status 34042 in-progress
   taskmd status 34042 done
 
-  Updates the frontmatter 'status:' field and renames the file to match in
-  one atomic step. Preferred over hand-editing frontmatter + 'taskmd fix'.
+  Renames the file to reflect the new status.
 
 'new' vs 'next':
   'new' is the recommended path — it allocates the ID, formats the filename,
-  synthesizes the frontmatter, and writes the file in one atomic step.
+  and writes the file in one atomic step.
   'next' returns just an ID string; callers are responsible for writing the
   file themselves, which is a sharp edge (two concurrent 'next' callers can
   receive the same ID)."""
 
 
 def _resolve_tasks_dir() -> Path:
-    """Return the first existing candidate directory, or 'tasks' as fallback.
-
-    Checks `taskmds/` before `tasks/` — `taskmds/` is taskmd-specific,
-    while `tasks/` is a generic name often taken by other tools (invoke, make).
-    """
+    """Return the first existing candidate directory, or 'tasks' as fallback."""
     for name in reversed(_DEFAULT_DIRS):
         p = Path(name)
         if p.is_dir():
@@ -98,11 +92,7 @@ def _resolve_tasks_dir() -> Path:
 
 
 def _resolve_init_dir() -> Path:
-    """Return the default dir to create on `init`.
-
-    Prefers `tasks/` but falls through to `taskmds/` if `tasks/` is already
-    taken (e.g. by another tool in the repo).
-    """
+    """Return the default dir to create on `init`."""
     primary = Path(_DEFAULT_DIRS[0])
     if primary.exists():
         return Path(_DEFAULT_DIRS[1])
@@ -113,7 +103,7 @@ def _parse_args(argv: list[str]) -> dict:
     """Hand-rolled arg parser. Extracts global flags, command, and command args."""
     opts: dict = {
         "agent": False,
-        "output": None,  # None means "auto" — text for humans, json for agents
+        "output": None,
         "compact": False,
         "help": False,
         "version": False,
@@ -122,7 +112,6 @@ def _parse_args(argv: list[str]) -> dict:
         "status": None,
         "priority": None,
         "slug": None,
-        "artifact": None,
         "positional": [],
     }
 
@@ -158,11 +147,6 @@ def _parse_args(argv: list[str]) -> dict:
             opts["slug"] = argv[i]
         elif arg.startswith("--slug="):
             opts["slug"] = arg.split("=", 1)[1]
-        elif arg == "--artifact" and i + 1 < len(argv):
-            i += 1
-            opts["artifact"] = argv[i]
-        elif arg.startswith("--artifact="):
-            opts["artifact"] = arg.split("=", 1)[1]
         elif arg.startswith("-"):
             print(f"Unknown flag: {arg}", file=sys.stderr)
             print("Run 'taskmd --help' for usage.", file=sys.stderr)
@@ -173,9 +157,6 @@ def _parse_args(argv: list[str]) -> dict:
 
     if positional:
         opts["command"] = positional[0]
-    # Default tasks_dir handling for commands that take only [command, tasks_dir].
-    # Commands with extra positional args (e.g. 'status <id> <new-status>') read
-    # from opts["positional"] directly and compute tasks_dir themselves.
     if len(positional) > 1 and positional[0] != "status":
         opts["tasks_dir"] = Path(positional[1])
     opts["positional"] = positional
@@ -184,24 +165,20 @@ def _parse_args(argv: list[str]) -> dict:
 
 
 def _use_json(opts: dict) -> bool:
-    """Determine whether to output JSON."""
     if opts["output"] == "json":
         return True
     if opts["output"] == "text":
         return False
-    # Auto: JSON in agent mode, text otherwise
     return is_agent_mode(opts["agent"])
 
 
 def _task_to_dict(task) -> dict:
-    """Convert a TaskFile to a JSON-friendly dict."""
     return {
         "id": task.id,
         "priority": task.priority,
         "status": task.status,
         "slug": task.slug,
         "path": str(task.path),
-        "fields": task.fields,
     }
 
 
@@ -210,12 +187,10 @@ def main(argv: list[str] | None = None) -> None:
     opts = _parse_args(args)
     use_json = _use_json(opts)
 
-    # --version
     if opts["version"]:
         print(f"taskmd {_pkg_version('taskmd')}")
         sys.exit(0)
 
-    # --help
     if opts["help"] or opts["command"] is None:
         if is_agent_mode(opts["agent"]):
             print(schema_json(compact=opts["compact"]))
@@ -235,11 +210,10 @@ def main(argv: list[str] | None = None) -> None:
                     {
                         "tasks_dir": str(result.tasks_dir),
                         "created": result.created,
-                        "template_fields": result.template_fields,
                     },
                 ))
             else:
-                assert result.error is not None  # ok is False → error is set
+                assert result.error is not None
                 print(error_envelope(
                     "init",
                     [result.error],
@@ -276,14 +250,14 @@ def main(argv: list[str] | None = None) -> None:
                 ))
         else:
             if result.errors:
-                print(f"\u2717 {len(result.errors)} task validation error(s):")
+                print(f"✗ {len(result.errors)} task validation error(s):")
                 for err in result.errors:
                     print(f"  - {err}")
                 print()
-                print("Run 'taskmd fix' to auto-fix (injects missing 'created', renames files).")
+                print("Run 'taskmd fix' to auto-fix.")
                 sys.exit(1)
             else:
-                print(f"\u2713 {result.file_count} task files validated")
+                print(f"✓ {result.file_count} task files validated")
 
     elif command == "fix":
         result = fix(tasks_dir)
@@ -292,17 +266,15 @@ def main(argv: list[str] | None = None) -> None:
                 print(error_envelope(
                     "fix",
                     result.errors,
-                    suggestions=["Run 'taskmd validate' to see all issues", "Check that task files have valid frontmatter (status, priority, created, artifact)"],
+                    suggestions=["Run 'taskmd validate' to see all issues"],
                 ))
                 sys.exit(1)
             else:
                 print(success_envelope(
                     "fix",
                     {
-                        "patched": result.patched,
                         "renamed": result.renamed,
                         "migrated": result.migrated,
-                        "patches": [{"file": f, "date": d} for f, d in result.patches],
                         "renames": [{"old": o, "new": n} for o, n in result.renames],
                         "renumbered": [
                             {
@@ -314,14 +286,13 @@ def main(argv: list[str] | None = None) -> None:
                             for oid, nid, old, new in result.renumbered
                         ],
                     },
-                    patched=result.patched,
                     renamed=result.renamed,
                     migrated=result.migrated,
                     renumbered=len(result.renumbered),
                 ))
         else:
             if result.errors:
-                print(f"\u2717 {len(result.errors)} error(s):")
+                print(f"✗ {len(result.errors)} error(s):")
                 for err in result.errors:
                     print(f"  - {err}")
                 sys.exit(1)
@@ -337,12 +308,9 @@ def main(argv: list[str] | None = None) -> None:
                         "  Note: cross-references to old IDs are NOT rewritten; "
                         "grep the mapping above."
                     )
-                print(f"\u2713 {result.summary()}")
+                print(f"✓ {result.summary()}")
 
     elif command == "next":
-        # 'next' is the sharp edge — two callers in the same (hostname, dir)
-        # partition can receive the same ID because allocation isn't tied to
-        # a write. Nudge callers toward 'taskmd new', which is atomic.
         print(
             "warning: 'taskmd next' returns an ID without claiming it; "
             "two concurrent callers can receive the same ID. "
@@ -358,24 +326,17 @@ def main(argv: list[str] | None = None) -> None:
 
     elif command == "new":
         slug = opts["slug"]
-        artifact = opts["artifact"]
         priority = opts["priority"] or "p2"
         status = opts["status"] or "ready"
 
-        missing = []
         if not slug:
-            missing.append("--slug")
-        if not artifact:
-            missing.append("--artifact")
-        if missing:
-            msg = f"'new' requires {' and '.join(missing)}"
+            msg = "'new' requires --slug"
             if use_json:
                 print(error_envelope(
                     "new",
                     [msg],
                     suggestions=[
-                        "taskmd new --slug my-task --artifact src/foo.py [--priority p2] [--status ready] < body.md",
-                        "Body is read from stdin; omit stdin for a template skeleton.",
+                        "taskmd new --slug my-task [--priority p2] [--status ready] < body.md",
                     ],
                 ))
             else:
@@ -398,10 +359,6 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"Error: {msg}", file=sys.stderr)
             sys.exit(1)
 
-        # Body is required. Detect the interactive-tty case up front so the
-        # caller gets a specific, actionable error instead of the generic
-        # "body is required" from core. Empty piped stdin still falls
-        # through to core's validation.
         if sys.stdin.isatty():
             msg = "'new' requires a task body on stdin"
             if use_json:
@@ -409,14 +366,13 @@ def main(argv: list[str] | None = None) -> None:
                     "new",
                     [msg],
                     suggestions=[
-                        "echo 'what this task is about' | taskmd new --slug ... --artifact ...",
-                        "cat body.md | taskmd new --slug ... --artifact ...",
-                        "A task with no body is a placeholder — if you cannot describe it, do not create it yet.",
+                        "echo 'what this task is about' | taskmd new --slug ...",
+                        "cat body.md | taskmd new --slug ...",
                     ],
                 ))
             else:
                 print(f"Error: {msg} (pipe a description on stdin)", file=sys.stderr)
-                print("  echo 'what this task is about' | taskmd new --slug ... --artifact ...", file=sys.stderr)
+                print("  echo 'what this task is about' | taskmd new --slug ...", file=sys.stderr)
             sys.exit(1)
 
         body = sys.stdin.read()
@@ -425,22 +381,18 @@ def main(argv: list[str] | None = None) -> None:
             result = create_task(
                 tasks_dir,
                 slug=slug,
-                artifact=artifact,
                 priority=priority,
                 status=status,
                 body=body,
             )
         except RuntimeError as e:
             msg = str(e)
-            # Only offer suggestions that actually match the underlying error,
-            # otherwise the output misleads (e.g. "Run taskmd init" shown for
-            # a body-missing failure).
             suggestions: list[str] = []
             if "tasks directory does not exist" in msg:
                 suggestions.append("Run 'taskmd init' first")
             if "body is required" in msg:
                 suggestions.append(
-                    "Pipe a description on stdin: echo 'desc' | taskmd new --slug ... --artifact ..."
+                    "Pipe a description on stdin: echo 'desc' | taskmd new --slug ..."
                 )
             if use_json:
                 print(error_envelope("new", [msg], suggestions=suggestions or None))
@@ -461,7 +413,6 @@ def main(argv: list[str] | None = None) -> None:
             print(f"created {result.path}")
 
     elif command == "status":
-        # Positional layout: [status, <id>, <new-status>, <tasks_dir>?]
         positional = opts["positional"]
         task_id = positional[1] if len(positional) > 1 else None
         new_status = positional[2] if len(positional) > 2 else None
@@ -494,9 +445,6 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"Error: {msg}", file=sys.stderr)
             sys.exit(1)
 
-        # Look up the task first so we can surface the old filename/status in
-        # both success and conflict-error payloads. If this miss races with a
-        # concurrent rename the core call below will still error cleanly.
         existing = find_task_by_id(status_tasks_dir, task_id)
         if existing is None:
             msg = f"task {task_id} not found in {status_tasks_dir}"
@@ -545,7 +493,6 @@ def main(argv: list[str] | None = None) -> None:
 
     elif command == "list":
         tasks = list_tasks(tasks_dir)
-        # Apply filters
         if opts["status"]:
             if opts["status"] not in VALID_STATUSES:
                 msg = f"invalid status '{opts['status']}' (valid: {', '.join(sorted(VALID_STATUSES))})"

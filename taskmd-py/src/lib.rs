@@ -20,12 +20,6 @@ fn task_to_dict<'py>(
     dict.set_item("priority", &task.priority)?;
     dict.set_item("status", &task.status)?;
     dict.set_item("slug", &task.slug)?;
-
-    let fields_dict = PyDict::new(py);
-    for (k, v) in &task.fields {
-        fields_dict.set_item(k, v)?;
-    }
-    dict.set_item("fields", fields_dict)?;
     Ok(dict)
 }
 
@@ -75,13 +69,6 @@ fn derive_slug(title: &str) -> String {
     filename::derive_slug(title)
 }
 
-// ── Frontmatter ───────────────────────────────────────────────────────────────
-
-#[pyfunction]
-fn parse_frontmatter(content: &str) -> std::collections::HashMap<String, String> {
-    taskmd_core::frontmatter::parse_frontmatter_str(content)
-}
-
 // ── Task file operations ──────────────────────────────────────────────────────
 
 #[pyfunction]
@@ -127,21 +114,17 @@ fn validate(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
 
 // ── Fix ───────────────────────────────────────────────────────────────────────
 
-/// Canonical summary string for a fix result — single Rust implementation.
-/// Python's `FixResult.summary()` calls this rather than reimplementing.
 #[pyfunction]
-fn fix_summary(patched: usize, renamed: usize, migrated: usize, renumbered: usize) -> String {
-    fix::fix_summary(patched, renamed, migrated, renumbered)
+fn fix_summary(renamed: usize, migrated: usize, renumbered: usize) -> String {
+    fix::fix_summary(renamed, migrated, renumbered)
 }
 
 #[pyfunction]
 fn do_fix(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
     let r = fix::fix(Path::new(tasks_dir));
     let dict = PyDict::new(py);
-    dict.set_item("patched", r.patched)?;
     dict.set_item("renamed", r.renamed)?;
     dict.set_item("migrated", r.migrated)?;
-    dict.set_item("patches", r.patches)?;
     dict.set_item("renames", r.renames)?;
     dict.set_item("renumbered", r.renumbered)?;
     dict.set_item("errors", r.errors)?;
@@ -151,14 +134,13 @@ fn do_fix(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
 // ── Create (atomic new-task) ──────────────────────────────────────────────────
 
 #[pyfunction]
-#[pyo3(signature = (tasks_dir, priority, status, slug, artifact, body))]
+#[pyo3(signature = (tasks_dir, priority, status, slug, body))]
 fn do_create(
     py: Python<'_>,
     tasks_dir: &str,
     priority: &str,
     status: &str,
     slug: &str,
-    artifact: &str,
     body: &str,
 ) -> PyResult<Py<PyAny>> {
     let created = create::create_task(
@@ -166,7 +148,6 @@ fn do_create(
         priority,
         status,
         slug,
-        artifact,
         body,
     )
     .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
@@ -186,7 +167,6 @@ fn do_init(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
     let dict = PyDict::new(py);
     dict.set_item("tasks_dir", r.tasks_dir.to_string_lossy().as_ref())?;
     dict.set_item("created", r.created)?;
-    dict.set_item("template_fields", r.template_fields)?;
     dict.set_item("error", r.error)?;
     Ok(dict.into_any().unbind())
 }
@@ -195,39 +175,30 @@ fn do_init(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
 
 #[pymodule]
 fn _core(m: &pyo3::Bound<'_, PyModule>) -> PyResult<()> {
-    // Internal helpers (test suite)
     m.add_function(wrap_pyfunction!(task_files, m)?)?;
     m.add_function(wrap_pyfunction!(is_legacy_id, m)?)?;
     m.add_function(wrap_pyfunction!(needs_migration, m)?)?;
     m.add_function(wrap_pyfunction!(parse_id_parts, m)?)?;
     m.add_function(wrap_pyfunction!(prefix_for, m)?)?;
 
-    // ID / filename / slug
     m.add_function(wrap_pyfunction!(next_id, m)?)?;
     m.add_function(wrap_pyfunction!(get_expected_filename, m)?)?;
     m.add_function(wrap_pyfunction!(derive_slug, m)?)?;
 
-    // Frontmatter
-    m.add_function(wrap_pyfunction!(parse_frontmatter, m)?)?;
-
-    // Task file operations
     m.add_function(wrap_pyfunction!(parse_task_file, m)?)?;
     m.add_function(wrap_pyfunction!(list_tasks, m)?)?;
     m.add_function(wrap_pyfunction!(find_task_by_id, m)?)?;
     m.add_function(wrap_pyfunction!(rename_status, m)?)?;
 
-    // Higher-level operations
     m.add_function(wrap_pyfunction!(validate, m)?)?;
     m.add_function(wrap_pyfunction!(fix_summary, m)?)?;
     m.add_function(wrap_pyfunction!(do_fix, m)?)?;
     m.add_function(wrap_pyfunction!(do_init, m)?)?;
     m.add_function(wrap_pyfunction!(do_create, m)?)?;
 
-    // Constants — sourced from taskmd_core::constants (single definition)
     m.add("FILENAME_PATTERN", filename::FILENAME_PATTERN.as_str())?;
     m.add("VALID_STATUSES", constants::VALID_STATUSES.to_vec())?;
     m.add("VALID_PRIORITIES", constants::VALID_PRIORITIES.to_vec())?;
-    m.add("VALID_FIELDS", constants::VALID_FIELDS.to_vec())?;
 
     Ok(())
 }

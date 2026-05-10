@@ -1,9 +1,3 @@
----
-created: 2026-04-20
-priority: p2
-status: done
-artifact: taskmd-core/src/fix.rs
----
 # `taskmd fix` should auto-renumber duplicate task IDs
 
 ## Summary

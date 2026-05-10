@@ -8,10 +8,8 @@ from pathlib import Path
 import pytest
 
 from taskmd.core import (
-    VALID_FIELDS,
     VALID_PRIORITIES,
     VALID_STATUSES,
-    ValidationResult,
     _is_legacy_id,
     _needs_migration,
     _parse_id_parts,
@@ -31,31 +29,25 @@ from taskmd.core import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_task(tasks_dir: Path, task_id: str, priority: str, status: str, slug: str, **extra_fields) -> Path:
-    """Create a valid task file on disk."""
-    fields = {"created": "2026-03-04", "priority": priority, "status": status, "artifact": f"src/{slug}.py"}
-    fields.update(extra_fields)
-    fm = "\n".join(f"{k}: {v}" for k, v in fields.items())
+def make_task(tasks_dir: Path, task_id: str, priority: str, status: str, slug: str) -> Path:
+    """Create a valid task file on disk (filename-only metadata, body is markdown)."""
     filename = get_expected_filename(task_id, priority, status, slug)
     path = tasks_dir / filename
-    path.write_text(f"---\n{fm}\n---\n\n# Task {task_id}\n\nSummary here.\n")
+    path.write_text(f"# Task {task_id}\n\nSummary here.\n")
     return path
 
 
-def make_legacy_task(tasks_dir: Path, number: int, priority: str, status: str, slug: str, **extra_fields) -> Path:
+def make_legacy_task(tasks_dir: Path, number: int, priority: str, status: str, slug: str) -> Path:
     """Create a legacy 4-digit format task file on disk."""
-    fields = {"created": "2026-03-04", "priority": priority, "status": status, "artifact": f"src/{slug}.py"}
-    fields.update(extra_fields)
-    fm = "\n".join(f"{k}: {v}" for k, v in fields.items())
     filename = f"{number:04d}-{priority}-{status}--{slug}.md"
     path = tasks_dir / filename
-    path.write_text(f"---\n{fm}\n---\n\n# Task {number}\n\nSummary here.\n")
+    path.write_text(f"# Task {number}\n\nSummary here.\n")
     return path
 
 
 def make_template(tasks_dir: Path) -> Path:
     path = tasks_dir / "_TEMPLATE.md"
-    path.write_text("---\ncreated: YYYY-MM-DD\npriority: p2\nstatus: ready\n---\n\n# Template\n")
+    path.write_text("# Template\n\nBody.\n")
     return path
 
 
@@ -73,7 +65,6 @@ class TestIdHelpers:
         assert all(c.isdigit() for c in prefix)
 
     def test_prefix_stable_before_and_after_dir_creation(self, tmp_path):
-        """Prefix for a non-existent dir matches prefix after creation."""
         tasks = tmp_path / "tasks"
         before = _prefix_for(tasks)
         tasks.mkdir()
@@ -86,7 +77,6 @@ class TestIdHelpers:
         assert _parse_id_parts("99999") == ("99", 999)
 
     def test_parse_id_parts_alpha(self):
-        """Old alpha-prefix IDs still parse correctly."""
         assert _parse_id_parts("AB042") == ("AB", 42)
         assert _parse_id_parts("ZZ999") == ("ZZ", 999)
 
@@ -102,16 +92,9 @@ class TestIdHelpers:
         assert not _is_legacy_id("42")
 
     def test_needs_migration(self):
-        # Legacy 4-digit always needs migration
         assert _needs_migration("0042", "34")
-        # Alpha prefix always needs migration
         assert _needs_migration("YF042", "34")
-        # A valid numeric prefix from another worktree must NOT be migrated —
-        # the prefix encodes where the task was created; rewriting it would
-        # destroy cross-worktree identity (see issue #6 and the Rust test
-        # `needs_migration_different_numeric_prefix_is_not_migrated`).
         assert not _needs_migration("21042", "34")
-        # Correct prefix does not need migration
         assert not _needs_migration("34042", "34")
 
 
@@ -130,21 +113,20 @@ class TestParseTaskFile:
         assert task.priority == "p2"
         assert task.status == "ready"
         assert task.slug == "fix-bug"
-        assert task.fields["created"] == "2026-03-04"
 
     def test_invalid_filename(self, tmp_path):
         p = tmp_path / "not-a-task.md"
-        p.write_text("---\nstatus: ready\n---\n")
+        p.write_text("# nope\n")
         assert parse_task_file(p) is None
 
     def test_old_3digit_format_rejected(self, tmp_path):
         p = tmp_path / "042-p2-ready--fix-bug.md"
-        p.write_text("---\ncreated: 2026-03-04\npriority: p2\nstatus: ready\n---\n")
-        assert parse_task_file(p) is None  # 3 digits not accepted
+        p.write_text("# x\n")
+        assert parse_task_file(p) is None
 
     def test_single_dash_rejected(self, tmp_path):
-        p = tmp_path / "34042-p2-ready-fix-bug.md"  # single dash before slug
-        p.write_text("---\ncreated: 2026-03-04\npriority: p2\nstatus: ready\n---\n")
+        p = tmp_path / "34042-p2-ready-fix-bug.md"
+        p.write_text("# x\n")
         assert parse_task_file(p) is None
 
     def test_legacy_4digit_file(self, tmp_path):
@@ -154,7 +136,6 @@ class TestParseTaskFile:
         assert task.id == "0042"
 
     def test_alpha_prefix_file(self, tmp_path):
-        """Old alpha-prefix AANNN files still parse."""
         p = make_task(tmp_path, "AB123", "p1", "done", "big-feature")
         task = parse_task_file(p)
         assert task is not None
@@ -173,15 +154,6 @@ class TestParseTaskFile:
             task = parse_task_file(p)
             assert task is not None, f"Failed to parse status: {status}"
             assert task.status == status
-
-    def test_frontmatter_with_colon_in_value(self, tmp_path):
-        prefix = _prefix_for(tmp_path)
-        p = make_task(tmp_path, f"{prefix}001", "p2", "ready", "test")
-        content = p.read_text()
-        content = content.replace("---\n\n#", 'title: "QA Report: Streaming"\n---\n\n#')
-        p.write_text(content)
-        task = parse_task_file(p)
-        assert task is not None
 
 
 # ---------------------------------------------------------------------------
@@ -222,54 +194,22 @@ class TestValidate:
         assert result.ok
         assert result.file_count == 2
 
-    def test_missing_frontmatter(self, tmp_path):
-        prefix = _prefix_for(tmp_path)
-        p = tmp_path / f"{prefix}001-p2-ready--no-fm.md"
-        p.write_text("# No frontmatter\n")
+    def test_invalid_filename_pattern(self, tmp_path):
+        # File doesn't match DDNNN-pX-status--slug.md
+        p = tmp_path / "not-a-real-task.md"
+        p.write_text("# x\n")
         result = validate(tmp_path)
         assert not result.ok
-        assert any("missing YAML frontmatter" in e for e in result.errors)
+        assert any("doesn't match pattern" in e for e in result.errors)
 
-    def test_missing_status(self, tmp_path):
+    def test_invalid_status_in_filename(self, tmp_path):
         prefix = _prefix_for(tmp_path)
-        p = tmp_path / f"{prefix}001-p2-ready--test.md"
-        p.write_text("---\ncreated: 2026-03-04\npriority: p2\n---\n")
+        # `pending` is not a valid status, so the regex won't match
+        p = tmp_path / f"{prefix}001-p2-pending--test.md"
+        p.write_text("# x\n")
         result = validate(tmp_path)
         assert not result.ok
-        assert any("missing 'status'" in e for e in result.errors)
-
-    def test_missing_priority(self, tmp_path):
-        prefix = _prefix_for(tmp_path)
-        p = tmp_path / f"{prefix}001-p2-ready--test.md"
-        p.write_text("---\ncreated: 2026-03-04\nstatus: ready\n---\n")
-        result = validate(tmp_path)
-        assert not result.ok
-        assert any("missing 'priority'" in e for e in result.errors)
-
-    def test_missing_created(self, tmp_path):
-        prefix = _prefix_for(tmp_path)
-        p = tmp_path / f"{prefix}001-p2-ready--test.md"
-        p.write_text("---\npriority: p2\nstatus: ready\n---\n")
-        result = validate(tmp_path)
-        assert not result.ok
-        assert any("missing 'created'" in e for e in result.errors)
-
-    def test_invalid_status(self, tmp_path):
-        prefix = _prefix_for(tmp_path)
-        p = tmp_path / f"{prefix}001-p2-ready--test.md"
-        p.write_text("---\ncreated: 2026-03-04\npriority: p2\nstatus: pending\n---\n")
-        result = validate(tmp_path)
-        assert not result.ok
-        assert any("invalid status" in e for e in result.errors)
-
-    def test_filename_mismatch(self, tmp_path):
-        prefix = _prefix_for(tmp_path)
-        # Frontmatter says done, filename says ready
-        p = tmp_path / f"{prefix}001-p2-ready--test.md"
-        p.write_text("---\ncreated: 2026-03-04\npriority: p2\nstatus: done\n---\n")
-        result = validate(tmp_path)
-        assert not result.ok
-        assert any("doesn't match frontmatter" in e for e in result.errors)
+        assert any("doesn't match pattern" in e for e in result.errors)
 
     def test_duplicate_ids(self, tmp_path):
         prefix = _prefix_for(tmp_path)
@@ -283,17 +223,16 @@ class TestValidate:
         make_template(tmp_path)
         result = validate(tmp_path)
         assert result.ok
-        assert result.file_count == 0  # template not counted
+        assert result.file_count == 0
 
     def test_ancillary_skipped(self, tmp_path):
         prefix = _prefix_for(tmp_path)
         make_task(tmp_path, f"{prefix}001", "p2", "ready", "test")
-        # Create ancillary files
-        (tmp_path / f"{prefix}001-p2-ready--test.qaplan.md").write_text("---\ncreated: 2026-03-04\n---\n")
-        (tmp_path / f"{prefix}001-p2-ready--test.qareport.md").write_text("---\ncreated: 2026-03-04\n---\n")
+        (tmp_path / f"{prefix}001-p2-ready--test.qaplan.md").write_text("ancillary\n")
+        (tmp_path / f"{prefix}001-p2-ready--test.qareport.md").write_text("ancillary\n")
         result = validate(tmp_path)
         assert result.ok
-        assert result.file_count == 1  # only the main task
+        assert result.file_count == 1
 
     def test_legacy_format_still_validates(self, tmp_path):
         make_legacy_task(tmp_path, 1, "p2", "ready", "test")
@@ -307,50 +246,20 @@ class TestValidate:
 # ---------------------------------------------------------------------------
 
 class TestFix:
-    def test_inject_missing_created(self, tmp_path):
+    def test_no_renames_needed(self, tmp_path):
         prefix = _prefix_for(tmp_path)
-        p = tmp_path / f"{prefix}001-p2-ready--test.md"
-        p.write_text("---\npriority: p2\nstatus: ready\n---\n\n# Test\n")
+        make_task(tmp_path, f"{prefix}001", "p2", "ready", "test")
         result = fix(tmp_path)
-        assert result.patched == 1
-        content = (tmp_path / f"{prefix}001-p2-ready--test.md").read_text()
-        assert "created:" in content
-
-    def test_replace_malformed_created(self, tmp_path):
-        prefix = _prefix_for(tmp_path)
-        p = tmp_path / f"{prefix}001-p2-ready--test.md"
-        p.write_text("---\ncreated: YYYY-MM-DD\npriority: p2\nstatus: ready\n---\n")
-        fix(tmp_path)
-        content = (tmp_path / f"{prefix}001-p2-ready--test.md").read_text()
-        assert "YYYY-MM-DD" not in content
-        assert "created:" in content
-        # Run again -- should be idempotent
-        result2 = fix(tmp_path)
-        assert result2.patched == 0
-
-    def test_rename_to_match_frontmatter(self, tmp_path):
-        prefix = _prefix_for(tmp_path)
-        p = tmp_path / f"{prefix}001-p2-ready--old-name.md"
-        p.write_text("---\ncreated: 2026-03-04\npriority: p1\nstatus: done\n---\n")
-        result = fix(tmp_path)
-        assert result.renamed == 1
-        assert (tmp_path / f"{prefix}001-p1-done--old-name.md").exists()
-        assert not p.exists()
-
-    def test_rename_conflict(self, tmp_path):
-        prefix = _prefix_for(tmp_path)
-        make_task(tmp_path, f"{prefix}001", "p1", "done", "target")
-        p = tmp_path / f"{prefix}001-p2-ready--target.md"
-        p.write_text("---\ncreated: 2026-03-04\npriority: p1\nstatus: done\n---\n")
-        result = fix(tmp_path)
-        assert any("cannot rename" in e for e in result.errors)
+        assert result.ok
+        assert result.renamed == 0
+        assert result.migrated == 0
 
     def test_ancillary_skipped_by_fix(self, tmp_path):
         prefix = _prefix_for(tmp_path)
         make_task(tmp_path, f"{prefix}001", "p2", "ready", "test")
         (tmp_path / f"{prefix}001-p2-ready--test.qaplan.md").write_text("garbage")
         result = fix(tmp_path)
-        assert result.ok  # no errors from the qaplan file
+        assert result.ok
 
     def test_migrate_legacy_to_numeric(self, tmp_path):
         make_legacy_task(tmp_path, 42, "p2", "ready", "old-task")
@@ -363,10 +272,8 @@ class TestFix:
         assert not (tmp_path / "0042-p2-ready--old-task.md").exists()
 
     def test_migrate_alpha_prefix_to_numeric(self, tmp_path):
-        """Alpha-prefix AANNN files are migrated to numeric DDNNN."""
-        # Create a file with alpha prefix directly (bypassing make_task helper)
         p = tmp_path / "YF042-p2-ready--alpha-task.md"
-        p.write_text("---\ncreated: 2026-03-04\npriority: p2\nstatus: ready\nartifact: src/alpha-task.py\n---\n\n# Task YF042\n")
+        p.write_text("# Task YF042\n")
         prefix = _prefix_for(tmp_path)
         result = fix(tmp_path)
         assert result.migrated == 1
@@ -393,19 +300,14 @@ class TestFix:
         make_legacy_task(tmp_path, 1, "p2", "ready", "test")
         fix(tmp_path)
         result2 = fix(tmp_path)
-        assert result2.patched == 0
         assert result2.renamed == 0
         assert result2.migrated == 0
 
     def test_renumber_two_duplicates(self, tmp_path):
-        """End-to-end: two files with the same ID → fix renumbers one and
-        reports the mapping; validate is clean afterwards."""
         import time
 
         prefix = _prefix_for(tmp_path)
         tid = f"{prefix}001"
-        # Tiebreaker resolves on mtime when neither file is in git: the older
-        # mtime wins. Sleep between writes so the order is deterministic.
         make_task(tmp_path, tid, "p2", "ready", "alpha")
         time.sleep(0.05)
         make_task(tmp_path, tid, "p1", "done", "beta")
@@ -416,16 +318,12 @@ class TestFix:
         old_id, new_id, old_name, new_name = result.renumbered[0]
         assert old_id == tid
         assert new_id != tid
-        # Same priority/status/slug as the loser — renumber only touches the ID.
         assert "-p1-done--beta.md" in new_name
-        # Filesystem reflects the change.
         assert not (tmp_path / old_name).exists()
         assert (tmp_path / new_name).exists()
-        # Validate is clean afterwards.
         assert validate(tmp_path).ok
 
     def test_renumber_idempotent(self, tmp_path):
-        """Running fix twice after a renumber is a no-op for the second run."""
         import time
 
         prefix = _prefix_for(tmp_path)
@@ -440,7 +338,6 @@ class TestFix:
         assert r2.renamed == 0
 
     def test_renumber_summary_reports_count(self, tmp_path):
-        """FixResult.summary() mentions the renumber count when non-zero."""
         import time
 
         prefix = _prefix_for(tmp_path)
@@ -462,8 +359,7 @@ class TestValidateMentionsFix:
         result = validate(tmp_path)
         assert not result.ok
         dup_errors = [e for e in result.errors if "duplicate task id" in e]
-        assert dup_errors, "expected at least one duplicate-id error"
-        # Every duplicate-id error now points at the remediation.
+        assert dup_errors
         assert all("taskmd fix" in e for e in dup_errors), dup_errors
 
 
@@ -479,7 +375,6 @@ class TestNextId:
 
     def test_nonexistent_dir(self, tmp_path):
         result = next_id(tmp_path / "nope")
-        # Should still return a valid ID
         assert len(result) == 5
         assert result.endswith("001")
 
@@ -493,23 +388,15 @@ class TestNextId:
         prefix = _prefix_for(tmp_path)
         make_task(tmp_path, prefix + "001", "p2", "ready", "a")
         make_task(tmp_path, prefix + "100", "p2", "ready", "b")
-        assert next_id(tmp_path) == prefix + "101"  # max + 1, not fill gaps
+        assert next_id(tmp_path) == prefix + "101"
 
     def test_ignores_legacy_files_when_allocating(self, tmp_path):
-        """next_id is scoped to the local prefix; legacy files (empty prefix)
-        do not inflate the local sequence. Any migration-time collision is
-        resolved by `fix`, which bumps the migrated seq within the local
-        prefix space until a free slot is found."""
         prefix = _prefix_for(tmp_path)
         make_legacy_task(tmp_path, 50, "p2", "ready", "old")
         assert next_id(tmp_path) == prefix + "001"
 
     def test_ignores_foreign_prefix_sequences(self, tmp_path):
-        """next_id scopes to the local prefix so allocations in foreign
-        partitions (different machine or worktree) don't inflate the local
-        counter. Mirrors the Rust test `next_id_ignores_foreign_prefix_sequences`."""
         prefix = _prefix_for(tmp_path)
-        # Foreign alpha-prefix task — should not count toward local prefix
         make_task(tmp_path, "ZQ500", "p2", "ready", "other")
         assert next_id(tmp_path) == prefix + "001"
 
@@ -520,8 +407,6 @@ class TestNextId:
         b.mkdir()
         id_a = next_id(a)
         id_b = next_id(b)
-        # Different dirs may have same or different prefix (mod 10 collisions possible)
-        # but both should end with 001
         assert id_a.endswith("001")
         assert id_b.endswith("001")
 
@@ -538,17 +423,13 @@ class TestInit:
         assert tasks_dir.is_dir()
         assert (tasks_dir / "_TEMPLATE.md").exists()
         assert len(result.created) == 2
-        assert result.template_fields == sorted(VALID_FIELDS)
 
-    def test_template_has_frontmatter(self, tmp_path):
+    def test_template_has_no_frontmatter(self, tmp_path):
         tasks_dir = tmp_path / "tasks"
         init(tasks_dir)
         content = (tasks_dir / "_TEMPLATE.md").read_text()
-        assert content.startswith("---\n")
-        assert "status:" in content
-        assert "priority:" in content
-        assert "created:" in content
-        assert "artifact:" in content
+        assert not content.startswith("---")
+        assert "# Task Title" in content
 
     def test_fails_if_dir_exists(self, tmp_path):
         tasks_dir = tmp_path / "tasks"
@@ -572,101 +453,68 @@ class TestInit:
 
 
 # ---------------------------------------------------------------------------
-# create_task  (the atomic new-task primitive — Python-level smoke tests;
-# exhaustive behaviour is covered in taskmd-core/src/create.rs)
+# create_task
 # ---------------------------------------------------------------------------
 
 class TestCreateTask:
-    def test_creates_file_with_frontmatter_and_body(self, tmp_path):
-        result = create_task(
-            tmp_path, slug="fix-login", artifact="src/auth.py", body="Fix the bug."
-        )
+    def test_creates_file_with_body_only(self, tmp_path):
+        result = create_task(tmp_path, slug="fix-login", body="Fix the bug.")
         assert result.path.exists()
         assert result.filename.endswith("-p2-ready--fix-login.md")
         content = result.path.read_text(encoding="utf-8")
-        assert "priority: p2" in content
-        assert "status: ready" in content
-        assert "artifact: src/auth.py" in content
-        assert "Fix the bug." in content
+        assert not content.startswith("---")
+        assert content == "Fix the bug.\n"
 
     def test_custom_body_is_used(self, tmp_path):
-        result = create_task(
-            tmp_path, slug="x", artifact="src/x.py", body="Custom body line."
-        )
-        assert "Custom body line." in result.path.read_text(encoding="utf-8")
+        result = create_task(tmp_path, slug="x", body="Custom body line.")
+        assert result.path.read_text(encoding="utf-8") == "Custom body line.\n"
 
     def test_priority_and_status_overrides(self, tmp_path):
         result = create_task(
-            tmp_path,
-            slug="x",
-            artifact="src/x.py",
-            priority="p0",
-            status="in-progress",
-            body="body",
+            tmp_path, slug="x", priority="p0", status="in-progress", body="body"
         )
         assert "-p0-in-progress--x.md" in result.filename
 
     def test_dirty_slug_is_normalized(self, tmp_path):
-        result = create_task(
-            tmp_path, slug="Add OAuth2!", artifact="src/x.py", body="body"
-        )
+        result = create_task(tmp_path, slug="Add OAuth2!", body="body")
         assert "--add-oauth2.md" in result.filename
 
     def test_sequential_creates_are_monotonic(self, tmp_path):
-        a = create_task(tmp_path, slug="a", artifact="src/a.py", body="body")
-        b = create_task(tmp_path, slug="b", artifact="src/b.py", body="body")
+        a = create_task(tmp_path, slug="a", body="body")
+        b = create_task(tmp_path, slug="b", body="body")
         assert int(a.id[2:]) + 1 == int(b.id[2:])
 
     def test_result_file_validates_clean(self, tmp_path):
-        create_task(tmp_path, slug="clean", artifact="src/clean.py", body="body")
+        create_task(tmp_path, slug="clean", body="body")
         assert validate(tmp_path).ok
 
     def test_missing_tasks_dir_raises(self, tmp_path):
         missing = tmp_path / "nope"
         with pytest.raises(RuntimeError):
-            create_task(missing, slug="x", artifact="src/x.py", body="body")
+            create_task(missing, slug="x", body="body")
 
     def test_invalid_priority_raises(self, tmp_path):
         with pytest.raises(RuntimeError):
-            create_task(
-                tmp_path, slug="x", artifact="src/x.py", priority="p9", body="body"
-            )
-
-    def test_body_with_frontmatter_raises(self, tmp_path):
-        with pytest.raises(RuntimeError):
-            create_task(
-                tmp_path,
-                slug="x",
-                artifact="src/x.py",
-                body="---\nstatus: ready\n---\nbody",
-            )
-
-    def test_empty_artifact_raises(self, tmp_path):
-        with pytest.raises(RuntimeError):
-            create_task(tmp_path, slug="x", artifact="   ", body="body")
+            create_task(tmp_path, slug="x", priority="p9", body="body")
 
     def test_empty_body_raises(self, tmp_path):
         for body in ("", "   ", "\n\n", "\t\n"):
             with pytest.raises(RuntimeError):
-                create_task(tmp_path, slug="x", artifact="src/x.py", body=body)
+                create_task(tmp_path, slug="x", body=body)
 
 
 # ---------------------------------------------------------------------------
-# rename_status  (Python-level smoke tests — Rust covers exhaustive behaviour)
+# rename_status
 # ---------------------------------------------------------------------------
 
 class TestRenameStatus:
-    def test_updates_frontmatter_and_renames_file(self, tmp_path):
+    def test_renames_file(self, tmp_path):
         old = make_task(tmp_path, "34001", "p2", "ready", "fix-login")
         old_name, new_name = rename_status(tmp_path, "34001", "in-progress")
         assert old_name == old.name
         assert new_name.endswith("-p2-in-progress--fix-login.md")
         assert not old.exists()
-        new_path = tmp_path / new_name
-        assert new_path.exists()
-        content = new_path.read_text(encoding="utf-8")
-        assert "status: in-progress" in content
-        assert "status: ready" not in content
+        assert (tmp_path / new_name).exists()
 
     def test_happy_path_result_still_validates(self, tmp_path):
         make_task(tmp_path, "34001", "p2", "ready", "fix-login")
@@ -684,11 +532,10 @@ class TestRenameStatus:
             rename_status(tmp_path, "34001", "pending")
 
     def test_conflict_when_target_exists(self, tmp_path):
-        # Stage a bare file at the exact target path of a rename. The listing
-        # order (alphabetical) means this stub sorts BEFORE the real task, so
-        # find_task_by_id picks the stub and its rename target collides with
-        # the real task file at the "ready" status path. Core must refuse.
         make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        # Stage a conflicting file at the target name. The stub sorts before
+        # the real task, so find_task_by_id picks it; renaming it to the
+        # 'ready' name collides with the real task file.
         (tmp_path / "34001-p2-in-progress--fix-login.md").write_text("stub")
         with pytest.raises(RuntimeError, match="target already exists"):
             rename_status(tmp_path, "34001", "ready")
@@ -699,7 +546,6 @@ class TestRenameStatus:
 # ---------------------------------------------------------------------------
 
 def _unset_agent_env(monkeypatch):
-    """Clear any agent-detection env vars so human-mode tests see human output."""
     for v in (
         "CLAUDECODE", "CLAUDE_CODE", "CURSOR_AGENT", "CODEX", "OPENAI_CODEX",
         "OPENCODE", "AIDER", "CLINE", "WINDSURF_AGENT", "GITHUB_COPILOT",
@@ -786,9 +632,6 @@ class TestCliStatus:
         from taskmd.cli import main
         with pytest.raises(SystemExit) as exc:
             main(["status", "34001", str(tmp_path)])
-        # "34001" and tmp_path are interpreted as id + new_status; the dir
-        # string is not a valid status, so we exit with invalid-status — but
-        # that's still exit 1 which is correct.
         assert exc.value.code == 1
 
     def test_missing_id_and_status_errors(self, tmp_path, capsys, monkeypatch):
@@ -805,8 +648,6 @@ class TestCliStatus:
         from taskmd.cli import main
         monkeypatch.setenv("FORCE_AGENT_MODE", "1")
         make_task(tmp_path, "34001", "p2", "ready", "fix-login")
-        # Stub file sorts before the real task, so find_task_by_id picks it
-        # and the rename target collides with the real task file at 'ready'.
         (tmp_path / "34001-p2-in-progress--fix-login.md").write_text("stub")
         with pytest.raises(SystemExit) as exc:
             main(["status", "34001", "ready", str(tmp_path)])

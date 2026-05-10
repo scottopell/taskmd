@@ -1,14 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::constants::VALID_FIELDS;
-
 const TEMPLATE_CONTENT: &str = "\
----
-created: YYYY-MM-DD
-priority: p2
-status: ready
-artifact: path/to/file-or-system-change
----
 # Task Title
 
 ## Summary
@@ -34,8 +26,6 @@ pub struct InitResult {
     pub tasks_dir: PathBuf,
     /// Paths created (directory and template file).
     pub created: Vec<String>,
-    /// Frontmatter fields present in the template, sorted.
-    pub template_fields: Vec<String>,
     pub error: Option<String>,
 }
 
@@ -52,7 +42,6 @@ pub fn init(tasks_dir: &Path) -> InitResult {
     let mut result = InitResult {
         tasks_dir: tasks_dir.to_path_buf(),
         created: vec![],
-        template_fields: vec![],
         error: None,
     };
 
@@ -77,14 +66,7 @@ pub fn init(tasks_dir: &Path) -> InitResult {
         return result;
     }
 
-    result.created.push(
-        template_path
-            .to_string_lossy()
-            .into_owned(),
-    );
-
-    // sorted(VALID_FIELDS) — already alphabetically sorted
-    result.template_fields = VALID_FIELDS.iter().map(|s| s.to_string()).collect();
+    result.created.push(template_path.to_string_lossy().into_owned());
 
     result
 }
