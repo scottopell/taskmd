@@ -224,10 +224,15 @@ def create_task(
     tasks_dir: Path | str,
     *,
     slug: str,
+    body: str,
     priority: str = "p2",
     status: str = "ready",
-    body: str = "",
 ) -> CreateResult:
-    """Atomically allocate an ID and write a new task file containing only `body`."""
+    """Atomically allocate an ID and write a new task file containing only `body`.
+
+    `body` is required and must be non-empty (after trimming whitespace) — a
+    task with no description is a placeholder. Raises ``RuntimeError`` if it's
+    missing or whitespace-only.
+    """
     d = _create(str(Path(tasks_dir)), priority, status, slug, body)
     return CreateResult(id=d["id"], path=Path(d["path"]), filename=d["filename"])
