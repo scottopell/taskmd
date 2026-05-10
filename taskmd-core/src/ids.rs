@@ -124,8 +124,8 @@ fn used_sequences(tasks_dir: &Path, prefix: &str) -> std::collections::HashSet<u
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        if let Some((id, _, _, _)) = crate::filename::parse_filename(&name) {
-            let (pfx, seq) = parse_id_parts(&id);
+        if let Some(parsed) = crate::filename::parse_filename(&name) {
+            let (pfx, seq) = parse_id_parts(&parsed.id);
             if pfx == prefix {
                 seqs.insert(seq);
             }

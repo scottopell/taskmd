@@ -45,8 +45,8 @@ pub fn validate(tasks_dir: &Path) -> ValidationResult {
             .to_string();
 
         match parse_filename(&name) {
-            Some((id, _, _, _)) => {
-                id_map.entry(id).or_default().push(name);
+            Some(parsed) => {
+                id_map.entry(parsed.id).or_default().push(name);
             }
             None => {
                 result.errors.push(format!(

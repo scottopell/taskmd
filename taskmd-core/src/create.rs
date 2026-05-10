@@ -12,7 +12,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::constants::{VALID_PRIORITIES, VALID_STATUSES};
+use crate::constants::{Priority, Status};
 use crate::error::Error;
 use crate::filename::{derive_slug, format_filename};
 use crate::ids::next_id;
@@ -30,22 +30,11 @@ pub struct CreatedTask {
 /// Allocate an ID and atomically write a new task file containing only `body`.
 pub fn create_task(
     tasks_dir: &Path,
-    priority: &str,
-    status: &str,
+    priority: Priority,
+    status: Status,
     slug: &str,
     body: &str,
 ) -> Result<CreatedTask, Error> {
-    if !VALID_PRIORITIES.contains(&priority) {
-        return Err(Error::InvalidPriority {
-            got: priority.to_string(),
-        });
-    }
-    if !VALID_STATUSES.contains(&status) {
-        return Err(Error::InvalidStatus {
-            got: status.to_string(),
-        });
-    }
-
     // Validate the raw input before normalization. `derive_slug` falls back
     // to "untitled" for any input that produces an empty slug (whitespace
     // only, all punctuation, etc.), which would silently mask a missing slug.
@@ -112,7 +101,14 @@ mod tests {
     #[test]
     fn creates_task_file_with_body_only() {
         let tmp = tasks_dir();
-        let r = create_task(tmp.path(), "p2", "ready", "fix-the-bug", "My custom body.").unwrap();
+        let r = create_task(
+            tmp.path(),
+            Priority::P2,
+            Status::Ready,
+            "fix-the-bug",
+            "My custom body.",
+        )
+        .unwrap();
 
         assert!(r.path.exists());
         assert!(r.filename.ends_with("-p2-ready--fix-the-bug.md"));
@@ -125,23 +121,9 @@ mod tests {
     fn rejects_empty_body() {
         let tmp = tasks_dir();
         for body in ["", "   ", "\n", "\t\n  \n"] {
-            let r = create_task(tmp.path(), "p2", "ready", "s", body);
+            let r = create_task(tmp.path(), Priority::P2, Status::Ready, "s", body);
             assert!(matches!(r, Err(Error::EmptyBody)), "body {body:?}");
         }
-    }
-
-    #[test]
-    fn rejects_invalid_priority() {
-        let tmp = tasks_dir();
-        let r = create_task(tmp.path(), "p9", "ready", "s", "body");
-        assert!(matches!(r, Err(Error::InvalidPriority { .. })));
-    }
-
-    #[test]
-    fn rejects_invalid_status() {
-        let tmp = tasks_dir();
-        let r = create_task(tmp.path(), "p2", "pending", "s", "body");
-        assert!(matches!(r, Err(Error::InvalidStatus { .. })));
     }
 
     #[test]
@@ -157,7 +139,7 @@ mod tests {
         ];
         for (input, expected) in cases {
             let tmp = tasks_dir();
-            let r = create_task(tmp.path(), "p2", "ready", "x", input).unwrap();
+            let r = create_task(tmp.path(), Priority::P2, Status::Ready, "x", input).unwrap();
             let content = std::fs::read_to_string(&r.path).unwrap();
             assert_eq!(content, expected, "input {input:?}");
         }
@@ -170,7 +152,7 @@ mod tests {
         // tasks by passing whitespace, punctuation, or empty strings.
         let tmp = tasks_dir();
         for slug in ["", "   ", "\t", "!!!", "---", "  / \n "] {
-            let r = create_task(tmp.path(), "p2", "ready", slug, "body");
+            let r = create_task(tmp.path(), Priority::P2, Status::Ready, slug, "body");
             assert!(
                 matches!(r, Err(Error::InvalidSlug { .. })),
                 "expected InvalidSlug for slug {slug:?}, got {r:?}",
@@ -183,9 +165,16 @@ mod tests {
     #[test]
     fn created_file_always_passes_validate() {
         let tmp = tasks_dir();
-        create_task(tmp.path(), "p0", "ready", "Fix: The Bug!", "body").unwrap();
-        create_task(tmp.path(), "p4", "in-progress", "x", "body").unwrap();
-        create_task(tmp.path(), "p2", "brainstorming", "a".repeat(200).as_str(), "body").unwrap();
+        create_task(tmp.path(), Priority::P0, Status::Ready, "Fix: The Bug!", "body").unwrap();
+        create_task(tmp.path(), Priority::P4, Status::InProgress, "x", "body").unwrap();
+        create_task(
+            tmp.path(),
+            Priority::P2,
+            Status::Brainstorming,
+            "a".repeat(200).as_str(),
+            "body",
+        )
+        .unwrap();
 
         let r = crate::validate::validate(tmp.path());
         assert!(r.ok(), "validate failed: {:?}", r.errors);
@@ -195,22 +184,29 @@ mod tests {
     fn rejects_missing_tasks_dir() {
         let tmp = TempDir::new().unwrap();
         let missing = tmp.path().join("does-not-exist");
-        let r = create_task(&missing, "p2", "ready", "s", "body");
+        let r = create_task(&missing, Priority::P2, Status::Ready, "s", "body");
         assert!(matches!(r, Err(Error::TasksDirNotFound { .. })));
     }
 
     #[test]
     fn slug_is_normalized() {
         let tmp = tasks_dir();
-        let r = create_task(tmp.path(), "p2", "ready", "Fix The Bug!", "body").unwrap();
+        let r = create_task(
+            tmp.path(),
+            Priority::P2,
+            Status::Ready,
+            "Fix The Bug!",
+            "body",
+        )
+        .unwrap();
         assert!(r.filename.contains("--fix-the-bug.md"));
     }
 
     #[test]
     fn sequential_creates_yield_monotonic_ids() {
         let tmp = tasks_dir();
-        let a = create_task(tmp.path(), "p2", "ready", "a", "body").unwrap();
-        let b = create_task(tmp.path(), "p2", "ready", "b", "body").unwrap();
+        let a = create_task(tmp.path(), Priority::P2, Status::Ready, "a", "body").unwrap();
+        let b = create_task(tmp.path(), Priority::P2, Status::Ready, "b", "body").unwrap();
         assert_ne!(a.id, b.id);
         assert_eq!(a.id[..2], b.id[..2]);
         let a_seq: u32 = a.id[2..].parse().unwrap();
@@ -222,10 +218,10 @@ mod tests {
     fn oexcl_collision_triggers_retry() {
         let tmp = tasks_dir();
         let squatter_id = next_id(tmp.path());
-        let squatter = format_filename(&squatter_id, "p2", "ready", "squatter");
+        let squatter = format_filename(&squatter_id, Priority::P2, Status::Ready, "squatter");
         std::fs::write(tmp.path().join(&squatter), "squat").unwrap();
 
-        let r = create_task(tmp.path(), "p2", "ready", "winner", "body").unwrap();
+        let r = create_task(tmp.path(), Priority::P2, Status::Ready, "winner", "body").unwrap();
         assert_ne!(r.id, squatter_id);
         assert!(r.filename.contains("--winner.md"));
     }

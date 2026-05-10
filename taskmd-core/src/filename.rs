@@ -1,11 +1,21 @@
+use std::str::FromStr;
 use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::constants::{VALID_PRIORITIES, VALID_STATUSES};
+use crate::constants::{Priority, Status, VALID_PRIORITIES, VALID_STATUSES};
 
 /// Maximum length (in bytes) of the slug component of a task filename.
 pub const MAX_SLUG_LEN: usize = 40;
+
+/// Result of parsing a task filename into its constituent fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedFilename {
+    pub id: String,
+    pub priority: Priority,
+    pub status: Status,
+    pub slug: String,
+}
 
 /// The canonical regex pattern for a valid task filename, built at startup from
 /// the `VALID_STATUSES` and `VALID_PRIORITIES` constants so the two can never
@@ -27,21 +37,27 @@ pub static FILENAME_PATTERN: LazyLock<String> = LazyLock::new(|| {
 static FILENAME_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&FILENAME_PATTERN).expect("FILENAME_PATTERN is valid regex"));
 
-/// Parse a task filename into `(id, priority, status, slug)`.
+/// Parse a task filename into its constituent fields.
 /// Returns `None` if the name doesn't match the expected pattern.
-pub fn parse_filename(name: &str) -> Option<(String, String, String, String)> {
+pub fn parse_filename(name: &str) -> Option<ParsedFilename> {
     let caps = FILENAME_RE.captures(name)?;
-    Some((
-        caps[1].to_string(),
-        caps[2].to_string(),
-        caps[3].to_string(),
-        caps[4].to_string(),
-    ))
+    // The regex is built from `VALID_PRIORITIES` / `VALID_STATUSES`, so the
+    // priority/status captures are guaranteed to match a known variant in
+    // practice. If the impossible happens (e.g. someone changed the const
+    // arrays without updating the enums), return `None` rather than panic.
+    let priority = Priority::from_str(&caps[2]).ok()?;
+    let status = Status::from_str(&caps[3]).ok()?;
+    Some(ParsedFilename {
+        id: caps[1].to_string(),
+        priority,
+        status,
+        slug: caps[4].to_string(),
+    })
 }
 
 /// Build the canonical filename for a task. Double-dash separates status from slug.
-pub fn format_filename(id: &str, priority: &str, status: &str, slug: &str) -> String {
-    format!("{id}-{priority}-{status}--{slug}.md")
+pub fn format_filename(id: &str, priority: Priority, status: Status, slug: &str) -> String {
+    format!("{id}-{}-{}--{slug}.md", priority.as_str(), status.as_str())
 }
 
 /// Convert a human-readable title to a valid taskmd slug.
@@ -109,29 +125,29 @@ mod tests {
 
     #[test]
     fn parse_numeric_format() {
-        let r = parse_filename("34042-p2-ready--fix-the-bug.md");
-        assert_eq!(
-            r,
-            Some(("34042".into(), "p2".into(), "ready".into(), "fix-the-bug".into()))
-        );
+        let r = parse_filename("34042-p2-ready--fix-the-bug.md").unwrap();
+        assert_eq!(r.id, "34042");
+        assert_eq!(r.priority, Priority::P2);
+        assert_eq!(r.status, Status::Ready);
+        assert_eq!(r.slug, "fix-the-bug");
     }
 
     #[test]
     fn parse_alpha_prefix_format() {
-        let r = parse_filename("YF042-p2-ready--fix-the-bug.md");
-        assert_eq!(
-            r,
-            Some(("YF042".into(), "p2".into(), "ready".into(), "fix-the-bug".into()))
-        );
+        let r = parse_filename("YF042-p2-ready--fix-the-bug.md").unwrap();
+        assert_eq!(r.id, "YF042");
+        assert_eq!(r.priority, Priority::P2);
+        assert_eq!(r.status, Status::Ready);
+        assert_eq!(r.slug, "fix-the-bug");
     }
 
     #[test]
     fn parse_legacy_format() {
-        let r = parse_filename("0042-p1-in-progress--refactor.md");
-        assert_eq!(
-            r,
-            Some(("0042".into(), "p1".into(), "in-progress".into(), "refactor".into()))
-        );
+        let r = parse_filename("0042-p1-in-progress--refactor.md").unwrap();
+        assert_eq!(r.id, "0042");
+        assert_eq!(r.priority, Priority::P1);
+        assert_eq!(r.status, Status::InProgress);
+        assert_eq!(r.slug, "refactor");
     }
 
     #[test]
@@ -144,15 +160,15 @@ mod tests {
     #[test]
     fn format_roundtrip_numeric() {
         let name = "34042-p2-in-progress--my-slug.md";
-        let (id, pri, status, slug) = parse_filename(name).unwrap();
-        assert_eq!(format_filename(&id, &pri, &status, &slug), name);
+        let p = parse_filename(name).unwrap();
+        assert_eq!(format_filename(&p.id, p.priority, p.status, &p.slug), name);
     }
 
     #[test]
     fn format_roundtrip_alpha() {
         let name = "YF042-p2-in-progress--my-slug.md";
-        let (id, pri, status, slug) = parse_filename(name).unwrap();
-        assert_eq!(format_filename(&id, &pri, &status, &slug), name);
+        let p = parse_filename(name).unwrap();
+        assert_eq!(format_filename(&p.id, p.priority, p.status, &p.slug), name);
     }
 
     #[test]

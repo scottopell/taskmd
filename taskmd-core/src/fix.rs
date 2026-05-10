@@ -356,7 +356,7 @@ pub fn fix(tasks_dir: &Path, migrate_mode: MigrateMode) -> FixResult {
             task_id = format!("{prefix}{seq:03}");
         }
 
-        let expected = format_filename(&task_id, &task.priority, &task.status, &task.slug);
+        let expected = format_filename(&task_id, task.priority, task.status, &task.slug);
 
         if name != expected {
             let new_path = tasks_dir.join(&expected);
@@ -404,8 +404,8 @@ fn renumber_duplicates(tasks_dir: &Path, result: &mut FixResult) {
             Some(s) => s,
             None => continue,
         };
-        if let Some((id, _, _, _)) = parse_filename(name) {
-            by_id.entry(id).or_default().push(path.clone());
+        if let Some(parsed) = parse_filename(name) {
+            by_id.entry(parsed.id).or_default().push(path.clone());
         }
     }
 
@@ -454,7 +454,7 @@ fn renumber_duplicates(tasks_dir: &Path, result: &mut FixResult) {
                 continue;
             }
 
-            let new_filename = format_filename(&new_id, &task.priority, &task.status, &task.slug);
+            let new_filename = format_filename(&new_id, task.priority, task.status, &task.slug);
             let new_path = tasks_dir.join(&new_filename);
             if new_path.exists() {
                 result.errors.push(format!(

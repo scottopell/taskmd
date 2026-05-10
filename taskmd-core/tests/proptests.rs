@@ -7,7 +7,7 @@ use std::path::Path;
 use proptest::prelude::*;
 use tempfile::TempDir;
 
-use taskmd_core::constants::{VALID_PRIORITIES, VALID_STATUSES};
+use taskmd_core::constants::{Priority, Status};
 use taskmd_core::filename::{derive_slug, format_filename, parse_filename, MAX_SLUG_LEN};
 use taskmd_core::fix::{fix, fix_summary, MigrateMode};
 use taskmd_core::ids::next_id;
@@ -18,12 +18,12 @@ use taskmd_core::validate::validate;
 // Strategies
 // ---------------------------------------------------------------------------
 
-fn arb_priority() -> impl Strategy<Value = String> {
-    prop::sample::select(VALID_PRIORITIES).prop_map(|s| s.to_string())
+fn arb_priority() -> impl Strategy<Value = Priority> {
+    prop::sample::select(Priority::ALL)
 }
 
-fn arb_status() -> impl Strategy<Value = String> {
-    prop::sample::select(VALID_STATUSES).prop_map(|s| s.to_string())
+fn arb_status() -> impl Strategy<Value = Status> {
+    prop::sample::select(Status::ALL)
 }
 
 fn arb_slug() -> impl Strategy<Value = String> {
@@ -36,7 +36,7 @@ fn arb_task_id() -> impl Strategy<Value = String> {
     (10..100u32, 1..=990u32).prop_map(|(pfx, seq)| format!("{pfx:02}{seq:03}"))
 }
 
-fn arb_task_params() -> impl Strategy<Value = (String, String, String, String)> {
+fn arb_task_params() -> impl Strategy<Value = (String, Priority, Status, String)> {
     (arb_task_id(), arb_priority(), arb_status(), arb_slug())
 }
 
@@ -44,18 +44,18 @@ fn arb_task_params() -> impl Strategy<Value = (String, String, String, String)> 
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn write_task(dir: &Path, id: &str, priority: &str, status: &str, slug: &str) {
+fn write_task(dir: &Path, id: &str, priority: Priority, status: Status, slug: &str) {
     let filename = format_filename(id, priority, status, slug);
     fs::write(dir.join(&filename), format!("# Task {id}\n")).unwrap();
 }
 
 fn make_task_dir(
-    params: &[(String, String, String, String)],
+    params: &[(String, Priority, Status, String)],
 ) -> (TempDir, Vec<String>) {
     let tmp = TempDir::new().unwrap();
     let mut ids = vec![];
     for (id, pri, sta, slug) in params {
-        write_task(tmp.path(), id, pri, sta, slug);
+        write_task(tmp.path(), id, *pri, *sta, slug);
         ids.push(id.clone());
     }
     (tmp, ids)
@@ -68,14 +68,14 @@ fn make_task_dir(
 proptest! {
     #[test]
     fn filename_roundtrip((id, pri, sta, slug) in arb_task_params()) {
-        let filename = format_filename(&id, &pri, &sta, &slug);
+        let filename = format_filename(&id, pri, sta, &slug);
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(&filename);
         fs::write(&path, "body\n").unwrap();
         let task = parse_task_file(&path).unwrap();
         prop_assert_eq!(&task.id, &id);
-        prop_assert_eq!(&task.priority, &pri);
-        prop_assert_eq!(&task.status, &sta);
+        prop_assert_eq!(task.priority, pri);
+        prop_assert_eq!(task.status, sta);
         prop_assert_eq!(&task.slug, &slug);
     }
 }
@@ -83,11 +83,10 @@ proptest! {
 proptest! {
     #[test]
     fn parse_regenerate_roundtrip((id, pri, sta, slug) in arb_task_params()) {
-        let original = format_filename(&id, &pri, &sta, &slug);
-        let (parsed_id, parsed_pri, parsed_sta, parsed_slug) =
-            parse_filename(&original).unwrap();
+        let original = format_filename(&id, pri, sta, &slug);
+        let parsed = parse_filename(&original).unwrap();
         let regenerated =
-            format_filename(&parsed_id, &parsed_pri, &parsed_sta, &parsed_slug);
+            format_filename(&parsed.id, parsed.priority, parsed.status, &parsed.slug);
         prop_assert_eq!(original, regenerated);
     }
 }
@@ -103,7 +102,7 @@ proptest! {
             .prop_filter("no double dash", |s| !s.contains("--"))
     ) {
         let tmp = TempDir::new().unwrap();
-        let filename = format_filename(&id, &pri, &sta, &slug);
+        let filename = format_filename(&id, pri, sta, &slug);
         let path = tmp.path().join(&filename);
         fs::write(&path, "body\n").unwrap();
         let task = parse_task_file(&path).unwrap();
@@ -114,17 +113,17 @@ proptest! {
 proptest! {
     #[test]
     fn parsed_id_is_five_digits((id, pri, sta, slug) in arb_task_params()) {
-        let filename = format_filename(&id, &pri, &sta, &slug);
-        let (parsed_id, _, _, _) = parse_filename(&filename).unwrap();
-        prop_assert_eq!(parsed_id.len(), 5);
-        prop_assert!(parsed_id.chars().all(|c| c.is_ascii_digit()));
+        let filename = format_filename(&id, pri, sta, &slug);
+        let parsed = parse_filename(&filename).unwrap();
+        prop_assert_eq!(parsed.id.len(), 5);
+        prop_assert!(parsed.id.chars().all(|c| c.is_ascii_digit()));
     }
 }
 
 proptest! {
     #[test]
     fn filename_starts_with_five_digit_id((id, pri, sta, slug) in arb_task_params()) {
-        let filename = format_filename(&id, &pri, &sta, &slug);
+        let filename = format_filename(&id, pri, sta, &slug);
         let first_five: String = filename.chars().take(5).collect();
         prop_assert!(first_five.chars().all(|c| c.is_ascii_digit()));
         prop_assert_eq!(&filename.chars().nth(5).unwrap(), &'-');
@@ -134,7 +133,7 @@ proptest! {
 proptest! {
     #[test]
     fn filename_has_exactly_one_double_dash((id, pri, sta, slug) in arb_task_params()) {
-        let filename = format_filename(&id, &pri, &sta, &slug);
+        let filename = format_filename(&id, pri, sta, &slug);
         prop_assert_eq!(filename.matches("--").count(), 1);
     }
 }
@@ -240,11 +239,11 @@ proptest! {
     #[test]
     fn template_and_ancillary_transparent((id, pri, sta, slug) in arb_task_params()) {
         let tmp = TempDir::new().unwrap();
-        write_task(tmp.path(), &id, &pri, &sta, &slug);
+        write_task(tmp.path(), &id, pri, sta, &slug);
 
         fs::write(tmp.path().join("_TEMPLATE.md"), "# Template\n").unwrap();
 
-        let task_stem = format_filename(&id, &pri, &sta, &slug);
+        let task_stem = format_filename(&id, pri, sta, &slug);
         let ancillary_name = task_stem.replace(".md", ".qaplan.md");
         fs::write(tmp.path().join(&ancillary_name), "ancillary content\n").unwrap();
 
@@ -268,13 +267,13 @@ proptest! {
         sta2 in arb_status(),
         slug2 in arb_slug(),
     ) {
-        let f1 = format_filename(&id, &pri1, &sta1, &slug1);
-        let f2 = format_filename(&id, &pri2, &sta2, &slug2);
+        let f1 = format_filename(&id, pri1, sta1, &slug1);
+        let f2 = format_filename(&id, pri2, sta2, &slug2);
         prop_assume!(f1 != f2);
 
         let tmp = TempDir::new().unwrap();
-        write_task(tmp.path(), &id, &pri1, &sta1, &slug1);
-        write_task(tmp.path(), &id, &pri2, &sta2, &slug2);
+        write_task(tmp.path(), &id, pri1, sta1, &slug1);
+        write_task(tmp.path(), &id, pri2, sta2, &slug2);
 
         let result = validate(tmp.path());
         prop_assert!(!result.ok());
@@ -330,8 +329,8 @@ proptest! {
             .iter()
             .filter_map(|p| {
                 let name = p.file_name()?.to_string_lossy().to_string();
-                let (id, _, _, _) = parse_filename(&name)?;
-                Some(id)
+                let parsed = parse_filename(&name)?;
+                Some(parsed.id)
             })
             .collect();
 
@@ -426,8 +425,8 @@ proptest! {
             .iter()
             .filter_map(|p| {
                 let name = p.file_name()?.to_string_lossy().to_string();
-                let (id, _, _, _) = parse_filename(&name)?;
-                Some(id)
+                let parsed = parse_filename(&name)?;
+                Some(parsed.id)
             })
             .collect();
 

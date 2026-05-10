@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::constants::VALID_STATUSES;
+use crate::constants::{Priority, Status};
 use crate::error::Error;
 use crate::filename::{format_filename, parse_filename};
 
@@ -10,8 +10,8 @@ use crate::filename::{format_filename, parse_filename};
 pub struct TaskFile {
     pub path: PathBuf,
     pub id: String,
-    pub priority: String,
-    pub status: String,
+    pub priority: Priority,
+    pub status: Status,
     pub slug: String,
 }
 
@@ -44,14 +44,14 @@ pub fn task_files(tasks_dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// Parse a task file from a path. Returns `None` if the filename doesn't match.
 pub fn parse_task_file(path: &Path) -> Option<TaskFile> {
     let name = path.file_name()?.to_str()?;
-    let (id, priority, status, slug) = parse_filename(name)?;
+    let parsed = parse_filename(name)?;
 
     Some(TaskFile {
         path: path.to_path_buf(),
-        id,
-        priority,
-        status,
-        slug,
+        id: parsed.id,
+        priority: parsed.priority,
+        status: parsed.status,
+        slug: parsed.slug,
     })
 }
 
@@ -88,14 +88,8 @@ pub fn find_task_by_id(tasks_dir: &Path, id: &str) -> Option<TaskFile> {
 pub fn rename_status(
     tasks_dir: &Path,
     id: &str,
-    new_status: &str,
+    new_status: Status,
 ) -> Result<(String, String), Error> {
-    if !VALID_STATUSES.contains(&new_status) {
-        return Err(Error::InvalidStatus {
-            got: new_status.to_string(),
-        });
-    }
-
     let task = find_task_by_id(tasks_dir, id).ok_or_else(|| Error::TaskNotFound {
         id: id.to_string(),
     })?;
@@ -107,7 +101,7 @@ pub fn rename_status(
         .to_string_lossy()
         .to_string();
 
-    let new_name = format_filename(&task.id, &task.priority, new_status, &task.slug);
+    let new_name = format_filename(&task.id, task.priority, new_status, &task.slug);
     let new_path = tasks_dir.join(&new_name);
 
     if new_path.exists() && new_path != task.path {
@@ -127,7 +121,7 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn setup_task(id: &str, priority: &str, status: &str, slug: &str) -> (TempDir, String) {
+    fn setup_task(id: &str, priority: Priority, status: Status, slug: &str) -> (TempDir, String) {
         let tmp = TempDir::new().unwrap();
         let filename = format_filename(id, priority, status, slug);
         fs::write(tmp.path().join(&filename), "# task body\n").unwrap();
@@ -136,8 +130,8 @@ mod tests {
 
     #[test]
     fn rename_status_renames_file() {
-        let (tmp, _) = setup_task("34001", "p2", "ready", "my-task");
-        let (old, new) = rename_status(tmp.path(), "34001", "done").unwrap();
+        let (tmp, _) = setup_task("34001", Priority::P2, Status::Ready, "my-task");
+        let (old, new) = rename_status(tmp.path(), "34001", Status::Done).unwrap();
         assert!(old.contains("ready"));
         assert!(new.contains("done"));
         assert!(tmp.path().join(&new).exists());
@@ -145,21 +139,9 @@ mod tests {
     }
 
     #[test]
-    fn rename_status_rejects_invalid_status() {
-        let (tmp, _) = setup_task("34001", "p2", "ready", "my-task");
-        assert!(rename_status(tmp.path(), "34001", "pending").is_err());
-    }
-
-    #[test]
-    fn rename_status_rejects_empty_status() {
-        let (tmp, _) = setup_task("34001", "p2", "ready", "my-task");
-        assert!(rename_status(tmp.path(), "34001", "").is_err());
-    }
-
-    #[test]
     fn rename_status_accepts_all_valid_statuses() {
-        for &status in crate::constants::VALID_STATUSES {
-            let (tmp, _) = setup_task("34001", "p2", "ready", "my-task");
+        for &status in Status::ALL {
+            let (tmp, _) = setup_task("34001", Priority::P2, Status::Ready, "my-task");
             assert!(
                 rename_status(tmp.path(), "34001", status).is_ok(),
                 "rename_status rejected valid status '{status}'",
@@ -169,18 +151,18 @@ mod tests {
 
     #[test]
     fn rename_status_file_still_discoverable() {
-        let (tmp, _) = setup_task("34001", "p2", "ready", "my-task");
-        rename_status(tmp.path(), "34001", "done").unwrap();
+        let (tmp, _) = setup_task("34001", Priority::P2, Status::Ready, "my-task");
+        rename_status(tmp.path(), "34001", Status::Done).unwrap();
         let found = find_task_by_id(tmp.path(), "34001");
         assert!(found.is_some());
-        assert_eq!(found.unwrap().status, "done");
+        assert_eq!(found.unwrap().status, Status::Done);
     }
 
     #[test]
     fn rename_status_unknown_id_errors() {
-        let (tmp, _) = setup_task("34001", "p2", "ready", "x");
+        let (tmp, _) = setup_task("34001", Priority::P2, Status::Ready, "x");
         assert!(matches!(
-            rename_status(tmp.path(), "34999", "done"),
+            rename_status(tmp.path(), "34999", Status::Done),
             Err(Error::TaskNotFound { .. })
         ));
     }
