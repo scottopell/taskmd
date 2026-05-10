@@ -93,7 +93,102 @@ Changing status:
   and writes the file in one atomic step.
   'next' returns just an ID string; callers are responsible for writing the
   file themselves, which is a sharp edge (two concurrent 'next' callers can
-  receive the same ID)."""
+  receive the same ID).
+
+Per-command help: taskmd <command> --help"""
+
+
+_SUBCOMMAND_HELP: dict[str, str] = {
+    "init": """\
+Usage: taskmd init [tasks_dir]
+
+Create a new tasks directory containing a _TEMPLATE.md marker file.
+
+Defaults to ./tasks. Fails loudly if the target already exists — pass an
+explicit name to create a directory under a different name. There is no
+silent fallback.
+
+Examples:
+  taskmd init                  # creates ./tasks/
+  taskmd init taskmds          # creates ./taskmds/ (use when ./tasks is taken)""",
+    "new": """\
+Usage: taskmd new --slug S [--priority P] [--status ST] [--tasks-dir P] [tasks_dir] < body.md
+
+Atomically allocate the next ID, format the filename, and write the file
+with the body from stdin. This is the recommended path for creating tasks.
+
+Required:
+  --slug S          URL-safe slug; dirty input is normalized via derive_slug
+  stdin             Task body. Must be non-empty (a task with no description
+                    is a placeholder).
+
+Optional:
+  --priority P      Default: p2. Values: p0..p4
+  --status ST       Default: ready
+  --tasks-dir P     Override auto-detect
+
+Examples:
+  echo 'Fix the login redirect' | taskmd new --slug fix-login
+  cat body.md | taskmd new --slug fix-login --priority p1""",
+    "status": """\
+Usage: taskmd status <id> <new-status> [--tasks-dir P] [tasks_dir]
+
+Change a task's status by renaming the file. Atomic.
+
+If the new status matches the current status, no filesystem op runs and
+the CLI prints "<id>: already <status> (no change)".
+
+Examples:
+  taskmd status 34042 in-progress
+  taskmd status 34042 done
+  taskmd status 34042 blocked --tasks-dir ./project/tasks""",
+    "validate": """\
+Usage: taskmd validate [--tasks-dir P] [tasks_dir]
+
+Check all task filenames for the canonical pattern (DDNNN-pX-status--slug.md)
+and flag duplicate task IDs. Read-only — never modifies files.
+
+Exit code: 0 if all clean, 1 if any errors found.""",
+    "fix": """\
+Usage: taskmd fix [--migrate|--no-migrate] [--tasks-dir P] [tasks_dir]
+
+Auto-repair fixable issues:
+  - Renames non-conforming filenames to the canonical pattern
+  - Renumbers duplicate task IDs (winner = oldest mtime, losers get fresh IDs;
+    cross-references to old IDs are NOT auto-rewritten — grep the output)
+  - Migrates legacy alpha-prefix IDs to numeric DDNNN format
+
+Migration of legacy YAML frontmatter (slated for removal in 1.1):
+  --migrate         Strip frontmatter from every file that has it
+                    (DESTRUCTIVE — commit before running)
+  --no-migrate      Skip the frontmatter check entirely
+  (default)         Refuse and prompt; exit 1
+
+Output is bucketed: [frontmatter] / [rename] / [renumber] sections in order.""",
+    "next": """\
+Usage: taskmd next [--tasks-dir P] [tasks_dir]
+
+Print the next available task ID without claiming it.
+
+DISCOURAGED: two concurrent callers receive the same ID — the file
+is not created. Prefer 'taskmd new' for creation. Use 'next' only for
+integrations that must do their own write path.""",
+    "list": """\
+Usage: taskmd list [--status S] [--priority P] [--slug-contains SUB] [--tasks-dir P] [tasks_dir]
+
+List all task files with metadata. Filters compose via intersection.
+
+Filters:
+  --status S         Match status exactly (e.g. ready, in-progress)
+  --priority P       Match priority exactly (p0..p4)
+  --slug-contains S  Substring match on slug (case-sensitive)
+
+Examples:
+  taskmd list                            # all tasks
+  taskmd list --status ready             # ready tasks only
+  taskmd list --slug-contains login      # tasks with 'login' in the slug
+  taskmd list --status ready --priority p0""",
+}
 
 
 def _autodetect_tasks_dir() -> tuple[Path | None, list[str]]:
@@ -319,6 +414,8 @@ def main(argv: list[str] | None = None) -> None:
     if opts["help"] or opts["command"] is None:
         if is_agent_mode(opts["agent"]):
             print(schema_json(compact=opts["compact"]))
+        elif opts["command"] in _SUBCOMMAND_HELP:
+            print(_SUBCOMMAND_HELP[opts["command"]])
         else:
             print(_HELP_TEXT)
         sys.exit(0)
@@ -758,7 +855,10 @@ def main(argv: list[str] | None = None) -> None:
                 },
             ))
         else:
-            print(f"  {old_filename} -> {new_filename}")
+            if old_filename == new_filename:
+                print(f"  {task_id}: already {new_status} (no change)")
+            else:
+                print(f"  {old_filename} -> {new_filename}")
 
     elif command == "list":
         tasks = list_tasks(tasks_dir)

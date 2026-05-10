@@ -64,6 +64,11 @@ pub fn format_filename(id: &str, priority: Priority, status: Status, slug: &str)
 ///
 /// Rules: lowercase → replace non-alphanumeric runs with a single hyphen →
 /// strip leading/trailing hyphens → truncate at [`MAX_SLUG_LEN`] characters.
+///
+/// Returns `"untitled"` if the input contains no alphanumeric characters
+/// (e.g. empty string, whitespace, all punctuation). Callers that want to
+/// reject such input must validate before calling — `create_task` and
+/// `update_task` both do this and surface `Error::InvalidSlug`.
 pub fn derive_slug(title: &str) -> String {
     let lower = title.to_lowercase();
     let mut slug = String::with_capacity(lower.len().min(MAX_SLUG_LEN + 10));

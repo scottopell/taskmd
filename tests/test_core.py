@@ -1315,3 +1315,84 @@ class TestCliFixExitCode:
         assert exc.value.code == 1
         # Frontmatter must NOT have been stripped (no migration flag).
         assert path.read_text().startswith("---")
+
+
+class TestCliSubcommandHelp:
+    """`taskmd <cmd> --help` should print per-command help in text mode."""
+
+    def test_list_help_shows_list_specific_text(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        with pytest.raises(SystemExit) as exc:
+            main(["list", "--help"])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert "Usage: taskmd list" in out
+        assert "--slug-contains" in out
+        # Should NOT print the global commands roster.
+        assert "Commands:\n  init" not in out
+
+    def test_init_help_shows_init_specific_text(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        with pytest.raises(SystemExit) as exc:
+            main(["init", "--help"])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert "Usage: taskmd init" in out
+        assert "Fails loudly" in out
+
+    def test_global_help_when_no_command(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        with pytest.raises(SystemExit) as exc:
+            main(["--help"])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert "Commands:" in out  # global roster
+        assert "Per-command help" in out
+
+
+class TestCliStatusNoOp:
+    """A status change to the current value should not print a self-rename arrow."""
+
+    def test_noop_prints_already_message(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        main(["status", "34001", "ready", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "already ready (no change)" in out
+        assert " -> " not in out
+
+    def test_real_change_still_prints_arrow(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        main(["status", "34001", "in-progress", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert " -> " in out
+        assert "already" not in out
+
+
+class TestPackageExports:
+    """Public API symbols must be importable from `taskmd` directly."""
+
+    def test_top_level_imports(self):
+        # If any of these import fails, this raises ImportError before assertion.
+        from taskmd import (
+            update_task,
+            find_task_by_id,
+            find_task_by_slug,
+            ancillary_files_for,
+            ensure_initialized,
+            init,
+            EnsureResult,
+            InitResult,
+        )
+        # Sanity: callables and types resolve.
+        assert callable(update_task)
+        assert callable(find_task_by_slug)
+        assert callable(ancillary_files_for)
+        assert callable(ensure_initialized)
+        assert EnsureResult.__name__ == "EnsureResult"

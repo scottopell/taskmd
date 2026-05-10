@@ -1,0 +1,122 @@
+# Changelog
+
+All notable changes to `taskmd` are documented here. The Python package
+(`taskmd`) and the Rust core crate (`taskmd-core`) ship in lockstep.
+
+The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
+and this project follows [SemVer](https://semver.org/) calibrated by user impact
+(see `OPERATIONS.md` for the calibration rules).
+
+## [1.0.0] — 2026-05-10
+
+The 1.0 line is the first stable API. Everything below was bundled across
+`1.0.0-rc1` and `1.0.0-rc2`. Pinning to `>=1.0,<2` is now safe.
+
+### Added — Rust core (`taskmd-core`)
+
+- Typed `Priority { P0..P4 }` and `Status { Ready, InProgress, Brainstorming, Blocked, Done, WontDo }` enums with `as_str()`, `Display`, `FromStr`, and `ALL` constants.
+- `ParsedFilename` struct returned by `parse_filename` — replaces the
+  4-tuple `(String, String, String, String)`.
+- Structured `Error` variants: `InvalidPriority { got }`, `InvalidStatus { got }`,
+  `InvalidSlug { got, reason }`, `EmptyBody`, `TasksDirNotFound { path }`,
+  `TaskNotFound { id }`, `TargetExists { path }`,
+  `IdAllocationExhausted { tasks_dir, tries }`. Display impls build the
+  priority/status allow-lists from the enums so they cannot drift.
+- `update_task(tasks_dir, id, TaskUpdate { priority, status, slug })` —
+  generalises status-only renames to any combination of the three filename
+  axes in one atomic rename.
+- `ensure_initialized(tasks_dir)` — idempotent counterpart to `init`.
+- `find_task_by_slug(tasks_dir, slug) -> Vec<TaskFile>`.
+- `ancillary_files_for(tasks_dir, id) -> Vec<PathBuf>` — extension-agnostic.
+  Picks up `<task-stem>.<tag>.<ext>` siblings of any extension, so screenshots
+  and PDFs follow tasks they're attached to.
+- `TaskFile::filename(&self) -> &str` convenience accessor.
+
+### Changed — Rust core (BREAKING)
+
+- `parse_filename` returns `Option<ParsedFilename>` instead of
+  `Option<(String, String, String, String)>`.
+- `format_filename(id, priority: Priority, status: Status, slug)` — typed
+  enum args replace `&str`.
+- `TaskFile` flattens with `priority: Priority`, `status: Status` enum fields.
+- `create_task` takes `Priority` and `Status` enums instead of `&str`. The
+  runtime validation guards are gone — invalid input is unrepresentable.
+
+### Removed — Rust core (BREAKING)
+
+- `rename_status` — replaced by `update_task`. Callers that only changed
+  status pass `TaskUpdate { status: Some(s), ..Default::default() }`.
+- YAML frontmatter support. Filename is the sole source of truth. The
+  one-shot migration code path (`fix --migrate`) remains for now and is
+  scheduled for removal in `1.1`.
+
+### Added — Python (`taskmd`)
+
+- `update_task(tasks_dir, task_id, *, priority=None, status=None, slug=None)`.
+- `find_task_by_slug`, `ancillary_files_for`, `ensure_initialized`,
+  `EnsureResult`, `TaskFile.filename` (property), all bubbled to
+  `from taskmd import …`.
+- `create_task` and friends now raise `ValueError` on invalid priority/status
+  inputs (was `RuntimeError`); runtime failures (not-found, target-exists,
+  filesystem errors) still raise `RuntimeError`.
+
+### Removed — Python (BREAKING)
+
+- `taskmd.core.rename_status` and `taskmd._core.rename_status`. Replace with
+  `update_task(..., status=new_status)`.
+
+### Added — CLI
+
+- `--tasks-dir P` global flag. Mutually exclusive with the positional
+  `tasks_dir`. Matches the `git -C` / `cargo --manifest-path` pattern.
+- `taskmd list --slug-contains <substr>` — case-sensitive substring filter.
+  Composes with `--status` and `--priority` via intersection.
+- `taskmd <subcommand> --help` now prints per-command help in text mode
+  (was: always the global help).
+- `taskmd fix` text output is bucketed:
+  `[frontmatter]` / `[rename]` / `[migrate]` / `[renumber]` sections in
+  fixed order. JSON envelope unchanged.
+
+### Changed — CLI (BREAKING)
+
+- `taskmd init` is strict: defaults to `./tasks`, fails loudly when the
+  target already exists. The previous silent fallback to `taskmds/` is
+  gone — pass an explicit name (`taskmd init taskmds`) to create a
+  different directory.
+- Read commands (`validate`, `fix`, `list`, `next`, `new`, `status`) auto-detect
+  the tasks directory by scanning cwd for direct subdirs whose name starts
+  with `task` (lowercase) and contain a `_TEMPLATE.md` marker. Multiple
+  matches now error with both names; zero matches now error pointing at
+  `taskmd init`. The previous "first existing of `tasks/`/`taskmds/` by
+  name" fallback is gone.
+- `taskmd status <id> <new-status>` no-op (target == current) prints
+  `<id>: already <status> (no change)` instead of a misleading
+  self-rename arrow.
+
+### Tooling
+
+- Rust core (`taskmd-core`) now publishes to crates.io alongside the Python
+  package on every `v*` tag. Both registries use OIDC trusted publishing —
+  no API tokens stored in the repo.
+
+## [0.4.1] — 2026-04-23
+
+- `taskmd init` falls through to `taskmds/` when `tasks/` is taken (now
+  removed in 1.0.0; see above).
+
+## [0.4.0] — 2026-04-22
+
+- Renamed default auto-detect dir from `tasksmd` to `taskmds`.
+
+## [0.3.0] — earlier
+
+- Agent-mode JSON output is now minified by default.
+
+## [0.2.0] — earlier
+
+- Documented the release process.
+- `taskmd new` and `taskmd status` subcommands added.
+
+## [0.1.x] — earlier
+
+- Initial PyPI release.
