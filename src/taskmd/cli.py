@@ -31,7 +31,7 @@ from taskmd.core import (
     init,
     list_tasks,
     next_id,
-    rename_status,
+    update_task,
     validate,
 )
 
@@ -526,8 +526,8 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(1)
 
         try:
-            old_filename, new_filename = rename_status(
-                status_tasks_dir, task_id, new_status
+            old_filename, new_filename = update_task(
+                status_tasks_dir, task_id, status=new_status
             )
         except RuntimeError as e:
             msg = str(e)

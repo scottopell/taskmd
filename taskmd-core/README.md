@@ -51,12 +51,12 @@ Modules — full docs at [docs.rs/taskmd-core](https://docs.rs/taskmd-core):
 | `constants` | `VALID_STATUSES`, `VALID_PRIORITIES`.                                          |
 | `filename`  | `parse_filename`, `format_filename`, `derive_slug`, `MAX_SLUG_LEN`.            |
 | `ids`       | `next_id`, `prefix_for`, `parse_id_parts`, legacy-ID detection.                |
-| `tasks`     | `TaskFile`, `list_tasks`, `find_task_by_id`, `rename_status`.                  |
+| `tasks`     | `TaskFile`, `list_tasks`, `find_task_by_id`, `find_task_by_slug`, `update_task`, `ancillary_files_for`. |
 | `create`    | `create_task` — atomic ID-allocate + write.                                    |
-| `init`      | `init` — scaffold a fresh tasks directory.                                     |
+| `init`      | `init` — scaffold a fresh tasks directory. `ensure_initialized` — idempotent variant. |
 | `validate`  | `validate` — check filename conformance and ID uniqueness.                     |
 | `fix`       | `fix` — auto-rename non-conforming files, renumber duplicates, plus a one-shot legacy-format migration (slated for removal in 1.1). |
-| `error`     | `Error` enum: `Io`, `NotFound`, `Conflict`, `InvalidValue`.                    |
+| `error`     | `Error` enum: `Io`, `InvalidPriority`, `InvalidStatus`, `InvalidSlug`, `EmptyBody`, `TasksDirNotFound`, `TaskNotFound`, `TargetExists`, `IdAllocationExhausted`. |
 
 All filesystem operations take a `&Path` to the tasks directory. The library
 does not assume a current working directory; callers resolve paths.

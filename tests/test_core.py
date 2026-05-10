@@ -14,13 +14,16 @@ from taskmd.core import (
     _needs_migration,
     _parse_id_parts,
     _prefix_for,
+    ancillary_files_for,
     create_task,
+    ensure_initialized,
+    find_task_by_slug,
     fix,
     get_expected_filename,
     init,
     next_id,
     parse_task_file,
-    rename_status,
+    update_task,
     validate,
 )
 
@@ -672,7 +675,7 @@ class TestCreateTask:
             create_task(missing, slug="x", body="body")
 
     def test_invalid_priority_raises(self, tmp_path):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError):
             create_task(tmp_path, slug="x", priority="p9", body="body")
 
     def test_empty_body_raises(self, tmp_path):
@@ -682,41 +685,207 @@ class TestCreateTask:
 
 
 # ---------------------------------------------------------------------------
-# rename_status
+# update_task
 # ---------------------------------------------------------------------------
 
-class TestRenameStatus:
-    def test_renames_file(self, tmp_path):
+class TestUpdateTask:
+    def test_status_change_renames_file(self, tmp_path):
         old = make_task(tmp_path, "34001", "p2", "ready", "fix-login")
-        old_name, new_name = rename_status(tmp_path, "34001", "in-progress")
+        old_name, new_name = update_task(tmp_path, "34001", status="in-progress")
         assert old_name == old.name
         assert new_name.endswith("-p2-in-progress--fix-login.md")
         assert not old.exists()
         assert (tmp_path / new_name).exists()
 
-    def test_happy_path_result_still_validates(self, tmp_path):
-        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
-        rename_status(tmp_path, "34001", "done")
-        assert validate(tmp_path).ok
+    def test_priority_change_renames_file(self, tmp_path):
+        old = make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        old_name, new_name = update_task(tmp_path, "34001", priority="p0")
+        assert old_name == old.name
+        assert "-p0-ready--" in new_name
+        assert not old.exists()
+        assert (tmp_path / new_name).exists()
+
+    def test_slug_change_renames_file(self, tmp_path):
+        old = make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        old_name, new_name = update_task(tmp_path, "34001", slug="Brand New Slug")
+        assert old_name == old.name
+        assert new_name.endswith("--brand-new-slug.md")
+        assert not old.exists()
+        assert (tmp_path / new_name).exists()
+
+    def test_combined_change(self, tmp_path):
+        old = make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        old_name, new_name = update_task(
+            tmp_path,
+            "34001",
+            priority="p0",
+            status="in-progress",
+            slug="overhaul-auth",
+        )
+        assert old_name == old.name
+        assert "-p0-in-progress--overhaul-auth.md" in new_name
+        assert not old.exists()
+        assert (tmp_path / new_name).exists()
+
+    def test_noop_returns_same_filename(self, tmp_path):
+        old = make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        old_name, new_name = update_task(tmp_path, "34001")
+        assert old_name == new_name
+        assert old_name == old.name
+        assert old.exists()
+
+        # Also a no-op when kwargs match the current values.
+        old_name2, new_name2 = update_task(
+            tmp_path, "34001", priority="p2", status="ready"
+        )
+        assert old_name2 == new_name2
+        assert old.exists()
 
     def test_unknown_id_raises(self, tmp_path):
         make_task(tmp_path, "34001", "p2", "ready", "slug")
         with pytest.raises(RuntimeError, match="not found"):
-            rename_status(tmp_path, "34999", "done")
+            update_task(tmp_path, "34999", status="done")
 
     def test_invalid_status_raises(self, tmp_path):
         make_task(tmp_path, "34001", "p2", "ready", "slug")
-        with pytest.raises(RuntimeError, match="invalid status"):
-            rename_status(tmp_path, "34001", "pending")
+        with pytest.raises(ValueError, match="invalid status"):
+            update_task(tmp_path, "34001", status="pending")
 
-    def test_conflict_when_target_exists(self, tmp_path):
+    def test_invalid_priority_raises(self, tmp_path):
+        make_task(tmp_path, "34001", "p2", "ready", "slug")
+        with pytest.raises(ValueError, match="invalid priority"):
+            update_task(tmp_path, "34001", priority="p9")
+
+    def test_invalid_slug_raises(self, tmp_path):
+        make_task(tmp_path, "34001", "p2", "ready", "slug")
+        with pytest.raises(RuntimeError, match="invalid slug"):
+            update_task(tmp_path, "34001", slug="   ")
+
+    def test_target_exists_raises(self, tmp_path):
         make_task(tmp_path, "34001", "p2", "ready", "fix-login")
-        # Stage a conflicting file at the target name. The stub sorts before
-        # the real task, so find_task_by_id picks it; renaming it to the
-        # 'ready' name collides with the real task file.
+        # Stage a conflicting file at the target name. find_task_by_id sorts
+        # filenames; the stub at the in-progress name sorts before the real
+        # task on disk, so when we rename back to 'ready' it collides with
+        # the real task file.
         (tmp_path / "34001-p2-in-progress--fix-login.md").write_text("stub")
         with pytest.raises(RuntimeError, match="target already exists"):
-            rename_status(tmp_path, "34001", "ready")
+            update_task(tmp_path, "34001", status="ready")
+
+
+# ---------------------------------------------------------------------------
+# find_task_by_slug
+# ---------------------------------------------------------------------------
+
+class TestFindTaskBySlug:
+    def test_single_match(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        make_task(tmp_path, f"{prefix}001", "p2", "ready", "fix-login")
+        make_task(tmp_path, f"{prefix}002", "p1", "done", "other-task")
+        results = find_task_by_slug(tmp_path, "fix-login")
+        assert len(results) == 1
+        assert results[0].id == f"{prefix}001"
+        assert results[0].slug == "fix-login"
+
+    def test_no_match_returns_empty(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        make_task(tmp_path, f"{prefix}001", "p2", "ready", "fix-login")
+        results = find_task_by_slug(tmp_path, "nonexistent-slug")
+        assert results == []
+
+    def test_multiple_matches_different_ids(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        make_task(tmp_path, f"{prefix}001", "p2", "ready", "shared-slug")
+        make_task(tmp_path, f"{prefix}002", "p1", "done", "shared-slug")
+        make_task(tmp_path, f"{prefix}003", "p0", "in-progress", "other")
+        results = find_task_by_slug(tmp_path, "shared-slug")
+        assert len(results) == 2
+        ids = {t.id for t in results}
+        assert ids == {f"{prefix}001", f"{prefix}002"}
+
+
+# ---------------------------------------------------------------------------
+# ancillary_files_for
+# ---------------------------------------------------------------------------
+
+class TestAncillaryFilesFor:
+    def test_returns_attachments(self, tmp_path):
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        (tmp_path / "34001-p2-ready--fix-login.qaplan.md").write_text("plan")
+        (tmp_path / "34001-p2-ready--fix-login.qareport.md").write_text("report")
+        results = ancillary_files_for(tmp_path, "34001")
+        names = sorted(p.name for p in results)
+        assert names == [
+            "34001-p2-ready--fix-login.qaplan.md",
+            "34001-p2-ready--fix-login.qareport.md",
+        ]
+
+    def test_no_main_returns_empty(self, tmp_path):
+        # No main task on disk for id 34999.
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        results = ancillary_files_for(tmp_path, "34999")
+        assert results == []
+
+    def test_no_ancillaries_returns_empty(self, tmp_path):
+        make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        results = ancillary_files_for(tmp_path, "34001")
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# ensure_initialized
+# ---------------------------------------------------------------------------
+
+class TestEnsureInitialized:
+    def test_creates_missing_dir(self, tmp_path):
+        tasks_dir = tmp_path / "tasks"
+        result = ensure_initialized(tasks_dir)
+        assert result.ok
+        assert tasks_dir.is_dir()
+        assert (tasks_dir / "_TEMPLATE.md").exists()
+        assert len(result.created) == 2
+
+    def test_idempotent(self, tmp_path):
+        tasks_dir = tmp_path / "tasks"
+        ensure_initialized(tasks_dir)
+        result = ensure_initialized(tasks_dir)
+        assert result.ok
+        assert result.created == []
+        assert tasks_dir.is_dir()
+        assert (tasks_dir / "_TEMPLATE.md").exists()
+
+    def test_fills_missing_template(self, tmp_path):
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        # Directory exists but template does not.
+        result = ensure_initialized(tasks_dir)
+        assert result.ok
+        assert (tasks_dir / "_TEMPLATE.md").exists()
+        # Only the template was created; the dir was already there.
+        assert len(result.created) == 1
+        assert any("_TEMPLATE.md" in path for path in result.created)
+
+    def test_leaves_existing_template_alone(self, tmp_path):
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        template = tasks_dir / "_TEMPLATE.md"
+        template.write_text("custom template body\n")
+        result = ensure_initialized(tasks_dir)
+        assert result.ok
+        assert result.created == []
+        assert template.read_text() == "custom template body\n"
+
+
+# ---------------------------------------------------------------------------
+# TaskFile.filename property
+# ---------------------------------------------------------------------------
+
+class TestTaskFileFilename:
+    def test_filename_returns_basename(self, tmp_path):
+        p = make_task(tmp_path, "34001", "p2", "ready", "fix-login")
+        task = parse_task_file(p)
+        assert task is not None
+        assert task.filename == "34001-p2-ready--fix-login.md"
+        assert task.filename == p.name
 
 
 # ---------------------------------------------------------------------------

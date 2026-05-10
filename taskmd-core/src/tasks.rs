@@ -112,8 +112,10 @@ pub fn find_task_by_slug(tasks_dir: &Path, slug: &str) -> Vec<TaskFile> {
 /// All ancillary files associated with the task `id` in `tasks_dir`.
 ///
 /// Ancillary files share the task's full filename stem and append a
-/// secondary tag before `.md`, e.g. `34042-p2-ready--foo.qaplan.md` is
-/// an ancillary of `34042-p2-ready--foo.md`.
+/// secondary tag before the extension, e.g. `34042-p2-ready--foo.qaplan.md`
+/// or `34042-p2-ready--foo.screenshot.png` are both ancillaries of
+/// `34042-p2-ready--foo.md`. Extension is not constrained — anything
+/// matching the prefix-with-trailing-dot convention is returned.
 ///
 /// Returns paths in alphabetical order. Empty if the main task is not
 /// found, or if no ancillaries exist.
@@ -140,8 +142,7 @@ pub fn ancillary_files_for(tasks_dir: &Path, id: &str) -> Vec<PathBuf> {
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| {
-            p.extension().map_or(false, |e| e == "md")
-                && !is_template(p)
+            !is_template(p)
                 && is_ancillary(p)
                 && p.file_name()
                     .and_then(|n| n.to_str())
@@ -493,6 +494,30 @@ mod tests {
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
             .collect();
         assert_eq!(names, vec![notes.to_string(), plan.to_string()]);
+    }
+
+    #[test]
+    fn ancillary_files_for_picks_up_non_md_attachments() {
+        let tmp = TempDir::new().unwrap();
+        let main = format_filename("0001", Priority::P2, Status::Ready, "main");
+        fs::write(tmp.path().join(&main), "# body\n").unwrap();
+        let png = "0001-p2-ready--main.screenshot.png";
+        let pdf = "0001-p2-ready--main.spec.pdf";
+        let notes_md = "0001-p2-ready--main.notes.md";
+        fs::write(tmp.path().join(png), b"\x89PNG").unwrap();
+        fs::write(tmp.path().join(pdf), b"%PDF-1.4").unwrap();
+        fs::write(tmp.path().join(notes_md), "# notes\n").unwrap();
+
+        let ancillaries = ancillary_files_for(tmp.path(), "0001");
+        let names: Vec<String> = ancillaries
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(
+            names,
+            vec![notes_md.to_string(), png.to_string(), pdf.to_string()],
+            "ancillary helper must surface attachments regardless of extension"
+        );
     }
 
     #[test]

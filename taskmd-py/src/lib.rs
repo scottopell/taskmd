@@ -6,6 +6,8 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::path::Path;
+use std::str::FromStr;
+use taskmd_core::constants::{Priority, Status};
 use taskmd_core::{constants, create, filename, fix, ids, init, tasks, validate as vld};
 
 // ── Task dict helper ──────────────────────────────────────────────────────────
@@ -17,8 +19,8 @@ fn task_to_dict<'py>(
     let dict = PyDict::new(py);
     dict.set_item("path", task.path.to_string_lossy().as_ref())?;
     dict.set_item("id", &task.id)?;
-    dict.set_item("priority", &task.priority)?;
-    dict.set_item("status", &task.status)?;
+    dict.set_item("priority", task.priority.as_str())?;
+    dict.set_item("status", task.status.as_str())?;
     dict.set_item("slug", &task.slug)?;
     Ok(dict)
 }
@@ -60,8 +62,17 @@ fn next_id(tasks_dir: &str) -> String {
 }
 
 #[pyfunction]
-fn get_expected_filename(id: &str, priority: &str, status: &str, slug: &str) -> String {
-    filename::format_filename(id, priority, status, slug)
+fn get_expected_filename(
+    id: &str,
+    priority: &str,
+    status: &str,
+    slug: &str,
+) -> PyResult<String> {
+    let prio = Priority::from_str(priority)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let stat = Status::from_str(status)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    Ok(filename::format_filename(id, prio, stat, slug))
 }
 
 #[pyfunction]
@@ -96,9 +107,50 @@ fn find_task_by_id(py: Python<'_>, tasks_dir: &str, id: &str) -> PyResult<Option
 }
 
 #[pyfunction]
-fn rename_status(tasks_dir: &str, id: &str, new_status: &str) -> PyResult<(String, String)> {
-    tasks::rename_status(Path::new(tasks_dir), id, new_status)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+fn find_task_by_slug(
+    py: Python<'_>,
+    tasks_dir: &str,
+    slug: &str,
+) -> PyResult<Vec<Py<PyAny>>> {
+    tasks::find_task_by_slug(Path::new(tasks_dir), slug)
+        .into_iter()
+        .map(|t| task_to_dict(py, t).map(|d| d.into_any().unbind()))
+        .collect()
+}
+
+#[pyfunction]
+fn ancillary_files_for(tasks_dir: &str, id: &str) -> PyResult<Vec<String>> {
+    Ok(tasks::ancillary_files_for(Path::new(tasks_dir), id)
+        .into_iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect())
+}
+
+#[pyfunction]
+#[pyo3(signature = (tasks_dir, id, priority=None, status=None, slug=None))]
+fn update_task(
+    tasks_dir: &str,
+    id: &str,
+    priority: Option<&str>,
+    status: Option<&str>,
+    slug: Option<String>,
+) -> PyResult<(String, String)> {
+    let priority = priority
+        .map(Priority::from_str)
+        .transpose()
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let status = status
+        .map(Status::from_str)
+        .transpose()
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let update = tasks::TaskUpdate {
+        priority,
+        status,
+        slug,
+    };
+    let r = tasks::update_task(Path::new(tasks_dir), id, update)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    Ok((r.old_filename, r.new_filename))
 }
 
 // ── Validate ─────────────────────────────────────────────────────────────────
@@ -153,14 +205,13 @@ fn do_create(
     slug: &str,
     body: &str,
 ) -> PyResult<Py<PyAny>> {
-    let created = create::create_task(
-        Path::new(tasks_dir),
-        priority,
-        status,
-        slug,
-        body,
-    )
-    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    let prio = Priority::from_str(priority)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let stat = Status::from_str(status)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+
+    let created = create::create_task(Path::new(tasks_dir), prio, stat, slug, body)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
     let dict = PyDict::new(py);
     dict.set_item("id", &created.id)?;
@@ -174,6 +225,16 @@ fn do_create(
 #[pyfunction]
 fn do_init(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
     let r = init::init(Path::new(tasks_dir));
+    let dict = PyDict::new(py);
+    dict.set_item("tasks_dir", r.tasks_dir.to_string_lossy().as_ref())?;
+    dict.set_item("created", r.created)?;
+    dict.set_item("error", r.error)?;
+    Ok(dict.into_any().unbind())
+}
+
+#[pyfunction]
+fn do_ensure_initialized(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
+    let r = init::ensure_initialized(Path::new(tasks_dir));
     let dict = PyDict::new(py);
     dict.set_item("tasks_dir", r.tasks_dir.to_string_lossy().as_ref())?;
     dict.set_item("created", r.created)?;
@@ -198,12 +259,15 @@ fn _core(m: &pyo3::Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_task_file, m)?)?;
     m.add_function(wrap_pyfunction!(list_tasks, m)?)?;
     m.add_function(wrap_pyfunction!(find_task_by_id, m)?)?;
-    m.add_function(wrap_pyfunction!(rename_status, m)?)?;
+    m.add_function(wrap_pyfunction!(find_task_by_slug, m)?)?;
+    m.add_function(wrap_pyfunction!(ancillary_files_for, m)?)?;
+    m.add_function(wrap_pyfunction!(update_task, m)?)?;
 
     m.add_function(wrap_pyfunction!(validate, m)?)?;
     m.add_function(wrap_pyfunction!(fix_summary, m)?)?;
     m.add_function(wrap_pyfunction!(do_fix, m)?)?;
     m.add_function(wrap_pyfunction!(do_init, m)?)?;
+    m.add_function(wrap_pyfunction!(do_ensure_initialized, m)?)?;
     m.add_function(wrap_pyfunction!(do_create, m)?)?;
 
     m.add("FILENAME_PATTERN", filename::FILENAME_PATTERN.as_str())?;

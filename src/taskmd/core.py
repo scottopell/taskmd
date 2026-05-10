@@ -11,11 +11,14 @@ from taskmd._core import (  # type: ignore[import]
     FILENAME_PATTERN as _FILENAME_PATTERN,
     VALID_PRIORITIES as _VALID_PRIORITIES,
     VALID_STATUSES as _VALID_STATUSES,
+    ancillary_files_for as _ancillary_files_for,
     derive_slug,
     do_create as _create,
+    do_ensure_initialized as _ensure_initialized,
     do_fix as _fix,
     do_init as _init,
     find_task_by_id as _find_task_by_id,
+    find_task_by_slug as _find_task_by_slug,
     fix_summary as _fix_summary,
     get_expected_filename as _get_expected_filename,
     is_legacy_id as _is_legacy_id,
@@ -25,8 +28,8 @@ from taskmd._core import (  # type: ignore[import]
     parse_id_parts as _parse_id_parts_raw,
     parse_task_file as _parse_task_file,
     prefix_for as _prefix_for_raw,
-    rename_status as _rename_status,
     task_files as _task_files_raw,
+    update_task as _update_task,
     validate as _validate,
 )
 
@@ -57,6 +60,11 @@ class TaskFile:
     priority: str
     status: str
     slug: str
+
+    @property
+    def filename(self) -> str:
+        """Return the basename of the task file."""
+        return self.path.name
 
 
 @dataclass
@@ -105,6 +113,19 @@ class FixResult:
 @dataclass
 class InitResult:
     """Result of initializing a tasks directory."""
+
+    tasks_dir: Path
+    created: list[str] = field(default_factory=list)
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+
+@dataclass
+class EnsureResult:
+    """Result of idempotently ensuring a tasks directory exists."""
 
     tasks_dir: Path
     created: list[str] = field(default_factory=list)
@@ -193,15 +214,43 @@ def find_task_by_id(tasks_dir: Path | str, task_id: str) -> TaskFile | None:
     return None if d is None else _dict_to_task(d)
 
 
-def rename_status(
-    tasks_dir: Path | str, task_id: str, new_status: str
+def update_task(
+    tasks_dir: Path | str,
+    task_id: str,
+    *,
+    priority: str | None = None,
+    status: str | None = None,
+    slug: str | None = None,
 ) -> tuple[str, str]:
-    """Change a task's status by renaming the file.
+    """Apply changes to an existing task by renaming the file.
+
+    Each kwarg is None to leave unchanged. A no-op call (all kwargs None or
+    matching the current value) returns ``(old_filename, old_filename)``
+    without touching the filesystem.
 
     Returns ``(old_filename, new_filename)``.
-    Raises ``RuntimeError`` if the task is not found or the target already exists.
+
+    Raises ``ValueError`` if priority/status/slug are invalid;
+    ``RuntimeError`` if the task is not found or the target file exists.
     """
-    return _rename_status(str(Path(tasks_dir)), task_id, new_status)
+    return _update_task(str(Path(tasks_dir)), task_id, priority, status, slug)
+
+
+def find_task_by_slug(tasks_dir: Path | str, slug: str) -> list[TaskFile]:
+    """Return all tasks whose slug matches the given slug. May be empty."""
+    return [
+        _dict_to_task(t) for t in _find_task_by_slug(str(Path(tasks_dir)), slug)
+    ]
+
+
+def ancillary_files_for(tasks_dir: Path | str, task_id: str) -> list[Path]:
+    """Return the paths of all ancillary files attached to a task ID.
+
+    Ancillary files are sibling files in the tasks directory whose filename
+    begins with the task's filename stem and has an additional segment
+    (e.g. ``34001-p2-ready--slug.qaplan.md``).
+    """
+    return [Path(p) for p in _ancillary_files_for(str(Path(tasks_dir)), task_id)]
 
 
 def validate(tasks_dir: Path | str = "tasks") -> ValidationResult:
@@ -241,6 +290,21 @@ def init(tasks_dir: Path | str = "tasks") -> InitResult:
     """Initialise a tasks directory with a template file."""
     d = _init(str(Path(tasks_dir)))
     return InitResult(
+        tasks_dir=Path(d["tasks_dir"]),
+        created=d["created"],
+        error=d["error"],
+    )
+
+
+def ensure_initialized(tasks_dir: Path | str = "tasks") -> EnsureResult:
+    """Idempotently ensure a tasks directory exists with a ``_TEMPLATE.md``.
+
+    Safe to call repeatedly: creates only what's missing. Returns an
+    ``EnsureResult`` listing the paths that were created on this call (empty
+    if everything was already in place).
+    """
+    d = _ensure_initialized(str(Path(tasks_dir)))
+    return EnsureResult(
         tasks_dir=Path(d["tasks_dir"]),
         created=d["created"],
         error=d["error"],
