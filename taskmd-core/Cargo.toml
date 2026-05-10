@@ -1,6 +1,6 @@
 [package]
 name = "taskmd-core"
-version = "1.0.0-rc1"
+version = "1.0.0-rc2"
 edition = "2021"
 description = "Core logic for taskmd — Markdown-native task management"
 license = "MIT"
