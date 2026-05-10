@@ -74,7 +74,10 @@ pub fn create_task(
         ));
     }
 
-    let body_trimmed = body.trim_end_matches('\n').to_string();
+    // Strip both `\r` and `\n` from the end so files end with exactly one
+    // `\n` regardless of input line endings (LF, CRLF, or trailing blank
+    // lines). Other trailing whitespace is preserved.
+    let body_trimmed = body.trim_end_matches(&['\r', '\n'][..]).to_string();
     let content = format!("{body_trimmed}\n");
 
     for _ in 0..MAX_CREATE_RETRIES {
@@ -146,6 +149,25 @@ mod tests {
         let tmp = tasks_dir();
         let r = create_task(tmp.path(), "p2", "pending", "s", "body");
         assert!(matches!(r, Err(Error::InvalidValue(_))));
+    }
+
+    #[test]
+    fn body_trim_normalizes_line_endings() {
+        // Files should always end with exactly one `\n` regardless of how
+        // the input body terminated (LF, CRLF, trailing blank lines, etc).
+        let cases = [
+            ("hello", "hello\n"),
+            ("hello\n", "hello\n"),
+            ("hello\n\n\n", "hello\n"),
+            ("hello\r\n", "hello\n"),
+            ("hello\r\n\r\n", "hello\n"),
+        ];
+        for (input, expected) in cases {
+            let tmp = tasks_dir();
+            let r = create_task(tmp.path(), "p2", "ready", "x", input).unwrap();
+            let content = std::fs::read_to_string(&r.path).unwrap();
+            assert_eq!(content, expected, "input {input:?}");
+        }
     }
 
     #[test]
