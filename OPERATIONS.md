@@ -5,10 +5,17 @@ Release, install, and maintenance procedures for `taskmd`.
 ## Cutting a release
 
 Releases are tag-triggered. Pushing any tag matching `v*` runs
-`.github/workflows/publish.yml`, which builds wheels on Linux/macOS/Windows,
-builds an sdist, and publishes everything to PyPI via trusted publishing
-(no token stored in the repo — the `pypi` GitHub environment is the trust
-anchor).
+`.github/workflows/publish.yml`, which:
+
+1. Builds wheels on Linux/macOS/Windows.
+2. Builds an sdist.
+3. Publishes the Python package to PyPI via OIDC trusted publishing
+   (`pypi` GitHub environment is the trust anchor — no token in repo).
+4. Publishes `taskmd-core` to crates.io via OIDC trusted publishing
+   (`crates-io` GitHub environment is the trust anchor — no token in repo).
+
+Both registries are configured to trust this repo's `publish.yml`. If
+either trust config is removed, the corresponding job fails fast.
 
 ```bash
 # 1. Pick the version. See "Versioning" below.
