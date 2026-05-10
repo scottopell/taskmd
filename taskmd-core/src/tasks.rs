@@ -15,6 +15,18 @@ pub struct TaskFile {
     pub slug: String,
 }
 
+impl TaskFile {
+    /// The filename component of `path`, without directory.
+    /// Panics only if the path has no filename (impossible for a TaskFile
+    /// since parse_task_file requires file_name() to be Some).
+    pub fn filename(&self) -> &str {
+        self.path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("TaskFile::path always has a UTF-8 filename")
+    }
+}
+
 pub fn is_template(path: &Path) -> bool {
     path.file_name().map_or(false, |n| n == "_TEMPLATE.md")
 }
@@ -80,6 +92,64 @@ pub fn find_task_by_id(tasks_dir: &Path, id: &str) -> Option<TaskFile> {
         }
     }
     None
+}
+
+/// Find tasks whose slug matches `slug` exactly. Returns all matches —
+/// slugs are not unique across statuses or priorities. Returns an empty
+/// Vec if no tasks match or `tasks_dir` is unreadable.
+pub fn find_task_by_slug(tasks_dir: &Path, slug: &str) -> Vec<TaskFile> {
+    let paths = match task_files(tasks_dir) {
+        Ok(p) => p,
+        Err(_) => return vec![],
+    };
+    paths
+        .iter()
+        .filter_map(|p| parse_task_file(p))
+        .filter(|t| t.slug == slug)
+        .collect()
+}
+
+/// All ancillary files associated with the task `id` in `tasks_dir`.
+///
+/// Ancillary files share the task's full filename stem and append a
+/// secondary tag before `.md`, e.g. `34042-p2-ready--foo.qaplan.md` is
+/// an ancillary of `34042-p2-ready--foo.md`.
+///
+/// Returns paths in alphabetical order. Empty if the main task is not
+/// found, or if no ancillaries exist.
+pub fn ancillary_files_for(tasks_dir: &Path, id: &str) -> Vec<PathBuf> {
+    let task = match find_task_by_id(tasks_dir, id) {
+        Some(t) => t,
+        None => return vec![],
+    };
+
+    let prefix = format!(
+        "{}-{}-{}--{}.",
+        task.id,
+        task.priority.as_str(),
+        task.status.as_str(),
+        task.slug
+    );
+
+    let entries = match std::fs::read_dir(tasks_dir) {
+        Ok(e) => e,
+        Err(_) => return vec![],
+    };
+
+    let mut matches: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension().map_or(false, |e| e == "md")
+                && !is_template(p)
+                && is_ancillary(p)
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map_or(false, |n| n.starts_with(&prefix))
+        })
+        .collect();
+    matches.sort();
+    matches
 }
 
 /// Fields to change on an existing task. `None` means "leave unchanged".
@@ -361,5 +431,107 @@ mod tests {
         let found = find_task_by_id(tmp.path(), "34001").unwrap();
         assert_eq!(found.priority, Priority::P0);
         assert_eq!(found.status, Status::Done);
+    }
+
+    #[test]
+    fn task_file_filename_returns_basename() {
+        let tmp = TempDir::new().unwrap();
+        let filename = "0001-p2-ready--my-slug.md";
+        let path = tmp.path().join(filename);
+        fs::write(&path, "# body\n").unwrap();
+        let task = parse_task_file(&path).unwrap();
+        assert_eq!(task.filename(), filename);
+    }
+
+    #[test]
+    fn find_task_by_slug_returns_match() {
+        let (tmp, _) = setup_task("0001", Priority::P2, Status::Ready, "my-task");
+        let matches = find_task_by_slug(tmp.path(), "my-task");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].id, "0001");
+        assert_eq!(matches[0].slug, "my-task");
+    }
+
+    #[test]
+    fn find_task_by_slug_no_match_returns_empty() {
+        let (tmp, _) = setup_task("0001", Priority::P2, Status::Ready, "my-task");
+        let matches = find_task_by_slug(tmp.path(), "does-not-exist");
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn find_task_by_slug_multiple_matches() {
+        let tmp = TempDir::new().unwrap();
+        let a = format_filename("0001", Priority::P2, Status::Ready, "shared");
+        let b = format_filename("0002", Priority::P0, Status::Done, "shared");
+        fs::write(tmp.path().join(&a), "# body\n").unwrap();
+        fs::write(tmp.path().join(&b), "# body\n").unwrap();
+        let matches = find_task_by_slug(tmp.path(), "shared");
+        assert_eq!(matches.len(), 2);
+        let ids: Vec<&str> = matches.iter().map(|t| t.id.as_str()).collect();
+        assert!(ids.contains(&"0001"));
+        assert!(ids.contains(&"0002"));
+    }
+
+    #[test]
+    fn ancillary_files_for_returns_attachments() {
+        let tmp = TempDir::new().unwrap();
+        let main = format_filename("0001", Priority::P2, Status::Ready, "main");
+        fs::write(tmp.path().join(&main), "# body\n").unwrap();
+        let notes = "0001-p2-ready--main.notes.md";
+        let plan = "0001-p2-ready--main.plan.md";
+        fs::write(tmp.path().join(notes), "# notes\n").unwrap();
+        fs::write(tmp.path().join(plan), "# plan\n").unwrap();
+        // Unrelated task
+        let other = format_filename("0002", Priority::P2, Status::Ready, "other");
+        fs::write(tmp.path().join(&other), "# body\n").unwrap();
+
+        let ancillaries = ancillary_files_for(tmp.path(), "0001");
+        assert_eq!(ancillaries.len(), 2);
+        let names: Vec<String> = ancillaries
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, vec![notes.to_string(), plan.to_string()]);
+    }
+
+    #[test]
+    fn ancillary_files_for_no_main_returns_empty() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("0001-p2-ready--main.notes.md"),
+            "# notes\n",
+        )
+        .unwrap();
+        let ancillaries = ancillary_files_for(tmp.path(), "0001");
+        assert!(ancillaries.is_empty());
+    }
+
+    #[test]
+    fn ancillary_files_for_no_ancillaries_returns_empty() {
+        let (tmp, _) = setup_task("0001", Priority::P2, Status::Ready, "main");
+        let ancillaries = ancillary_files_for(tmp.path(), "0001");
+        assert!(ancillaries.is_empty());
+    }
+
+    #[test]
+    fn ancillary_files_for_does_not_match_other_tasks() {
+        let tmp = TempDir::new().unwrap();
+        let main_a = format_filename("0001", Priority::P2, Status::Ready, "alpha");
+        let main_b = format_filename("0002", Priority::P2, Status::Ready, "alpha");
+        fs::write(tmp.path().join(&main_a), "# body\n").unwrap();
+        fs::write(tmp.path().join(&main_b), "# body\n").unwrap();
+        // Ancillary belongs to 0002, not 0001.
+        fs::write(
+            tmp.path().join("0002-p2-ready--alpha.notes.md"),
+            "# notes\n",
+        )
+        .unwrap();
+
+        let ancillaries = ancillary_files_for(tmp.path(), "0001");
+        assert!(
+            ancillaries.is_empty(),
+            "expected no ancillaries for id 0001, got {ancillaries:?}"
+        );
     }
 }
