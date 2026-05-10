@@ -36,42 +36,35 @@ pub fn create_task(
     body: &str,
 ) -> Result<CreatedTask, Error> {
     if !VALID_PRIORITIES.contains(&priority) {
-        return Err(Error::InvalidValue(format!(
-            "invalid priority '{priority}', expected one of: {}",
-            VALID_PRIORITIES.join(", ")
-        )));
+        return Err(Error::InvalidPriority {
+            got: priority.to_string(),
+        });
     }
     if !VALID_STATUSES.contains(&status) {
-        return Err(Error::InvalidValue(format!(
-            "invalid status '{status}', expected one of: {}",
-            VALID_STATUSES.join(", ")
-        )));
+        return Err(Error::InvalidStatus {
+            got: status.to_string(),
+        });
     }
 
     // Validate the raw input before normalization. `derive_slug` falls back
     // to "untitled" for any input that produces an empty slug (whitespace
     // only, all punctuation, etc.), which would silently mask a missing slug.
     if !slug.chars().any(|c| c.is_ascii_alphanumeric()) {
-        return Err(Error::InvalidValue(
-            "slug must contain at least one alphanumeric character".into(),
-        ));
+        return Err(Error::InvalidSlug {
+            got: slug.to_string(),
+            reason: "must contain at least one alphanumeric character".to_string(),
+        });
     }
     let slug = derive_slug(slug);
 
     if !tasks_dir.exists() {
-        return Err(Error::NotFound(format!(
-            "tasks directory does not exist: {} (run 'taskmd init' first)",
-            tasks_dir.display()
-        )));
+        return Err(Error::TasksDirNotFound {
+            path: tasks_dir.to_path_buf(),
+        });
     }
 
     if body.trim().is_empty() {
-        return Err(Error::InvalidValue(
-            "body is required — pipe at least one line of description on stdin. \
-             A task with no body is a placeholder; if you cannot describe it, \
-             do not create it yet."
-                .into(),
-        ));
+        return Err(Error::EmptyBody);
     }
 
     // Strip both `\r` and `\n` from the end so files end with exactly one
@@ -99,10 +92,10 @@ pub fn create_task(
         }
     }
 
-    Err(Error::Conflict(format!(
-        "failed to allocate a unique task ID in {} after {MAX_CREATE_RETRIES} attempts",
-        tasks_dir.display()
-    )))
+    Err(Error::IdAllocationExhausted {
+        tasks_dir: tasks_dir.to_path_buf(),
+        tries: MAX_CREATE_RETRIES,
+    })
 }
 
 #[cfg(test)]
@@ -133,7 +126,7 @@ mod tests {
         let tmp = tasks_dir();
         for body in ["", "   ", "\n", "\t\n  \n"] {
             let r = create_task(tmp.path(), "p2", "ready", "s", body);
-            assert!(matches!(r, Err(Error::InvalidValue(_))), "body {body:?}");
+            assert!(matches!(r, Err(Error::EmptyBody)), "body {body:?}");
         }
     }
 
@@ -141,14 +134,14 @@ mod tests {
     fn rejects_invalid_priority() {
         let tmp = tasks_dir();
         let r = create_task(tmp.path(), "p9", "ready", "s", "body");
-        assert!(matches!(r, Err(Error::InvalidValue(_))));
+        assert!(matches!(r, Err(Error::InvalidPriority { .. })));
     }
 
     #[test]
     fn rejects_invalid_status() {
         let tmp = tasks_dir();
         let r = create_task(tmp.path(), "p2", "pending", "s", "body");
-        assert!(matches!(r, Err(Error::InvalidValue(_))));
+        assert!(matches!(r, Err(Error::InvalidStatus { .. })));
     }
 
     #[test]
@@ -179,8 +172,8 @@ mod tests {
         for slug in ["", "   ", "\t", "!!!", "---", "  / \n "] {
             let r = create_task(tmp.path(), "p2", "ready", slug, "body");
             assert!(
-                matches!(r, Err(Error::InvalidValue(_))),
-                "expected InvalidValue for slug {slug:?}, got {r:?}",
+                matches!(r, Err(Error::InvalidSlug { .. })),
+                "expected InvalidSlug for slug {slug:?}, got {r:?}",
             );
         }
     }
@@ -203,7 +196,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let missing = tmp.path().join("does-not-exist");
         let r = create_task(&missing, "p2", "ready", "s", "body");
-        assert!(matches!(r, Err(Error::NotFound(_))));
+        assert!(matches!(r, Err(Error::TasksDirNotFound { .. })));
     }
 
     #[test]

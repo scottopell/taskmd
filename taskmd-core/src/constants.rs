@@ -41,9 +41,7 @@ impl std::fmt::Display for Priority {
 }
 
 impl std::str::FromStr for Priority {
-    // Phase 2 will swap this for the new structured Error::InvalidPriority.
-    // For now use String so we don't touch error.rs yet.
-    type Err = String;
+    type Err = crate::error::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "p0" => Ok(Priority::P0),
@@ -51,7 +49,9 @@ impl std::str::FromStr for Priority {
             "p2" => Ok(Priority::P2),
             "p3" => Ok(Priority::P3),
             "p4" => Ok(Priority::P4),
-            other => Err(other.to_string()),
+            other => Err(crate::error::Error::InvalidPriority {
+                got: other.to_string(),
+            }),
         }
     }
 }
@@ -95,9 +95,7 @@ impl std::fmt::Display for Status {
 }
 
 impl std::str::FromStr for Status {
-    // Phase 2 will swap this for the new structured Error::InvalidStatus.
-    // For now use String so we don't touch error.rs yet.
-    type Err = String;
+    type Err = crate::error::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "blocked" => Ok(Status::Blocked),
@@ -106,7 +104,9 @@ impl std::str::FromStr for Status {
             "in-progress" => Ok(Status::InProgress),
             "ready" => Ok(Status::Ready),
             "wont-do" => Ok(Status::WontDo),
-            other => Err(other.to_string()),
+            other => Err(crate::error::Error::InvalidStatus {
+                got: other.to_string(),
+            }),
         }
     }
 }

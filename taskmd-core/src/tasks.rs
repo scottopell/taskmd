@@ -91,14 +91,14 @@ pub fn rename_status(
     new_status: &str,
 ) -> Result<(String, String), Error> {
     if !VALID_STATUSES.contains(&new_status) {
-        return Err(Error::InvalidValue(format!(
-            "invalid status '{new_status}', expected one of: {}",
-            VALID_STATUSES.join(", ")
-        )));
+        return Err(Error::InvalidStatus {
+            got: new_status.to_string(),
+        });
     }
 
-    let task = find_task_by_id(tasks_dir, id)
-        .ok_or_else(|| Error::NotFound(format!("task {id} not found in {}", tasks_dir.display())))?;
+    let task = find_task_by_id(tasks_dir, id).ok_or_else(|| Error::TaskNotFound {
+        id: id.to_string(),
+    })?;
 
     let old_name = task
         .path
@@ -111,9 +111,9 @@ pub fn rename_status(
     let new_path = tasks_dir.join(&new_name);
 
     if new_path.exists() && new_path != task.path {
-        return Err(Error::Conflict(format!(
-            "cannot rename {old_name} to {new_name}: target already exists"
-        )));
+        return Err(Error::TargetExists {
+            path: new_path.clone(),
+        });
     }
 
     std::fs::rename(&task.path, &new_path)?;
@@ -181,7 +181,7 @@ mod tests {
         let (tmp, _) = setup_task("34001", "p2", "ready", "x");
         assert!(matches!(
             rename_status(tmp.path(), "34999", "done"),
-            Err(Error::NotFound(_))
+            Err(Error::TaskNotFound { .. })
         ));
     }
 }
