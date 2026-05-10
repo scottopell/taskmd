@@ -88,14 +88,14 @@ def schema(compact: bool = False) -> dict[str, Any]:
     """Return a JSON-serialisable schema describing the taskmd CLI."""
     commands: dict[str, Any] = {
         "init": {
-            "description": "Create a new tasks directory with a _TEMPLATE.md file. Fails if directory already exists.",
+            "description": "Create a new tasks directory with a _TEMPLATE.md file. Defaults to ./tasks; fails if the target dir already exists. Pass an explicit name (e.g. 'taskmd init taskmds') if the default is taken.",
             "args": {"tasks_dir": {"type": "path", "default": "./tasks"}},
             "output": "InitResult with tasks_dir, created[]",
         },
         "new": {
             "description": "Create a new task atomically: allocate next ID, format the filename, and write the file containing the body from stdin. This is the recommended way to create tasks. Body is REQUIRED on stdin — a task with no description is a placeholder.",
             "args": {
-                "tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"},
+                "tasks_dir": {"type": "path", "default": "auto-detected from task*/_TEMPLATE.md, or explicit"},
                 "--slug": {"type": "string", "required": True, "description": "URL-safe slug (e.g. 'fix-login-bug'). Dirty input is normalized via derive_slug."},
                 "--priority": {"type": "string", "default": "p2", "values": sorted(VALID_PRIORITIES)},
                 "--status": {"type": "string", "default": "ready", "values": sorted(VALID_STATUSES)},
@@ -112,7 +112,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "args": {
                 "id": {"type": "string", "required": True, "description": "Task ID (e.g. '34042'). Look it up with 'taskmd list' if you don't know it."},
                 "new_status": {"type": "string", "required": True, "values": sorted(VALID_STATUSES), "description": "Target status. Must be a valid status."},
-                "tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"},
+                "tasks_dir": {"type": "path", "default": "auto-detected from task*/_TEMPLATE.md, or explicit"},
             },
             "output": "{id, old_filename, new_filename, old_status, new_status}",
             "examples": [
@@ -123,13 +123,13 @@ def schema(compact: bool = False) -> dict[str, Any]:
         },
         "validate": {
             "description": "Check all task filenames for consistency (pattern + duplicate IDs)",
-            "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"}},
+            "args": {"tasks_dir": {"type": "path", "default": "auto-detected from task*/_TEMPLATE.md, or explicit"}},
             "output": "ValidationResult with errors[] and file_count",
         },
         "fix": {
             "description": "Auto-repair fixable issues (legacy ID formats, duplicate task IDs). On first run after upgrading from a frontmatter-bearing version, fix will refuse and prompt for --migrate (strip frontmatter, destructive) or --no-migrate (skip the check).",
             "args": {
-                "tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"},
+                "tasks_dir": {"type": "path", "default": "auto-detected from task*/_TEMPLATE.md, or explicit"},
                 "--migrate": {"type": "flag", "description": "Strip legacy YAML frontmatter from every task file that has it (destructive — commit first)."},
                 "--no-migrate": {"type": "flag", "description": "Skip the frontmatter migration check entirely."},
             },
@@ -137,16 +137,17 @@ def schema(compact: bool = False) -> dict[str, Any]:
         },
         "next": {
             "description": "Print the next available task ID (prefix derived from hostname + directory path). DISCOURAGED: this is a read-only advisory that doesn't claim the ID — two concurrent callers can receive the same ID. Prefer 'taskmd new' for creation; use 'next' only for integrations that must do their own write path.",
-            "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"}},
+            "args": {"tasks_dir": {"type": "path", "default": "auto-detected from task*/_TEMPLATE.md, or explicit"}},
             "output": "Task ID string (5-digit numeric DDNNN format)",
             "prefer_instead": "new",
         },
         "list": {
             "description": "List all task files with metadata",
             "args": {
-                "tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"},
+                "tasks_dir": {"type": "path", "default": "auto-detected from task*/_TEMPLATE.md, or explicit"},
                 "--status": {"type": "string", "description": "Filter by status"},
                 "--priority": {"type": "string", "description": "Filter by priority"},
+                "--slug-contains": {"type": "string", "description": "Filter to tasks whose slug contains this substring (case-sensitive)."},
             },
             "output": "Array of TaskFile objects",
         },
@@ -159,6 +160,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "--agent": {"description": "Force agent mode (JSON output, structured --help)"},
             "--output": {"type": "json|text", "default": "text (json in agent mode)"},
             "--compact": {"description": "Minimal schema output (fewer tokens)"},
+            "--tasks-dir": {"type": "path", "description": "Override auto-detection of the tasks directory. Mutually exclusive with positional tasks_dir."},
             "--version, -V": {"description": "Print version and exit"},
         },
         "commands": commands,

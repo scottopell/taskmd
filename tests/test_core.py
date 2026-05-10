@@ -462,7 +462,8 @@ class TestCliFixMigrate:
         path = self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
         main(["fix", "--migrate", str(tmp_path)])
         out = capsys.readouterr().out
-        assert "stripped frontmatter" in out
+        # Bucketed output uses '[frontmatter] stripped:' prefix.
+        assert "[frontmatter] stripped:" in out
         assert not path.read_text().startswith("---")
 
     def test_no_migrate_flag_skips_check(self, tmp_path, capsys, monkeypatch):
@@ -1002,3 +1003,315 @@ class TestCliStatus:
         obj = json.loads(capsys.readouterr().out)
         assert obj["status"] == "error"
         assert any("already exists" in e for e in obj["errors"])
+
+
+# ---------------------------------------------------------------------------
+# CLI: init strict-no-fallback
+# ---------------------------------------------------------------------------
+
+
+class TestCliInitStrict:
+    """`taskmd init` defaults to ./tasks and refuses silent fallback."""
+
+    def test_init_default_succeeds_when_tasks_missing(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        target = tmp_path / "tasks"
+        main(["init", str(target)])
+        assert target.is_dir()
+        assert (target / "_TEMPLATE.md").exists()
+
+    def test_init_fails_when_default_dir_exists(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        # The new strict behavior: when the default ./tasks already exists
+        # AND no positional was passed, init must error. We exercise this
+        # by chdir'ing into a tmp_path with a pre-existing 'tasks/' dir
+        # and calling `main(["init"])` with no positional.
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tasks").mkdir()
+        with pytest.raises(SystemExit) as exc:
+            main(["init"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "already exists" in err
+        assert "taskmd init taskmds" in err or "taskmds" in err
+
+    def test_init_succeeds_with_explicit_alternate_name(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        # Pre-create ./tasks then ask init to make ./taskmds explicitly.
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tasks").mkdir()
+        main(["init", "taskmds"])
+        target = tmp_path / "taskmds"
+        assert target.is_dir()
+        assert (target / "_TEMPLATE.md").exists()
+
+    def test_init_no_silent_fallback_to_taskmds(self, tmp_path, capsys, monkeypatch):
+        """The old footgun: ./tasks exists, so init silently created ./taskmds.
+        Verify this no longer happens."""
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tasks").mkdir()
+        with pytest.raises(SystemExit):
+            main(["init"])
+        # Critically: no taskmds/ should have been created.
+        assert not (tmp_path / "taskmds").exists()
+
+
+# ---------------------------------------------------------------------------
+# CLI: marker-based auto-detect of tasks_dir
+# ---------------------------------------------------------------------------
+
+
+class TestCliAutoDetect:
+    """Auto-detect picks any direct subdir whose name starts with 'task'
+    AND contains _TEMPLATE.md."""
+
+    def test_autodetect_finds_single_task_dir(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tasks").mkdir()
+        make_template(tmp_path / "tasks")
+        main(["validate"])
+        out = capsys.readouterr().out
+        assert "validated" in out
+
+    def test_autodetect_finds_alternate_named_dir(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "taskmds").mkdir()
+        make_template(tmp_path / "taskmds")
+        main(["validate"])
+        out = capsys.readouterr().out
+        assert "validated" in out
+
+    def test_autodetect_errors_on_zero_matches(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            main(["validate"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "no taskmd directory found" in err
+
+    def test_autodetect_errors_on_multiple_matches(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tasks").mkdir()
+        make_template(tmp_path / "tasks")
+        (tmp_path / "taskmds").mkdir()
+        make_template(tmp_path / "taskmds")
+        with pytest.raises(SystemExit) as exc:
+            main(["validate"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "multiple taskmd directories" in err
+        assert "tasks/" in err
+        assert "taskmds/" in err
+
+    def test_autodetect_ignores_non_task_prefix_dirs(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tickets").mkdir()
+        make_template(tmp_path / "tickets")
+        with pytest.raises(SystemExit) as exc:
+            main(["validate"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "no taskmd directory found" in err
+
+    def test_autodetect_ignores_task_dir_without_template(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tasks").mkdir()  # no _TEMPLATE.md
+        with pytest.raises(SystemExit) as exc:
+            main(["validate"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "no taskmd directory found" in err
+
+    def test_explicit_tasks_dir_skips_autodetect(self, tmp_path, capsys, monkeypatch):
+        """When a positional path is passed, the resolver must not perform
+        the marker scan — explicit overrides convention. The dir need not
+        contain _TEMPLATE.md for the resolver to use it."""
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        # Create a dir with no _TEMPLATE.md, pass it explicitly.
+        target = tmp_path / "my-bucket"
+        target.mkdir()
+        # validate accepts an empty/template-less dir (file_count == 0).
+        main(["validate", str(target)])
+        out = capsys.readouterr().out
+        assert "validated" in out
+
+
+# ---------------------------------------------------------------------------
+# CLI: --tasks-dir flag
+# ---------------------------------------------------------------------------
+
+
+class TestCliTasksDirFlag:
+    """The global --tasks-dir flag overrides positional and auto-detect."""
+
+    def test_tasks_dir_flag_overrides_autodetect(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        # cwd has tasks/_TEMPLATE.md, but we want --tasks-dir <other> to win.
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tasks").mkdir()
+        make_template(tmp_path / "tasks")
+        # Marker file in tasks/ would normally be picked. Add a task to it
+        # so we can detect which dir was actually scanned.
+        prefix = _prefix_for(tmp_path / "tasks")
+        make_task(tmp_path / "tasks", f"{prefix}001", "p2", "ready", "in-tasks")
+
+        other = tmp_path / "elsewhere"
+        other.mkdir()
+        # Empty dir — list should find no tasks.
+        main(["--tasks-dir", str(other), "list"])
+        out = capsys.readouterr().out
+        # Should reflect the empty `elsewhere` dir, not `tasks/`.
+        assert "in-tasks" not in out
+        assert "No tasks found." in out
+
+    def test_tasks_dir_flag_and_positional_conflict(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        a = tmp_path / "a"
+        b = tmp_path / "b"
+        a.mkdir()
+        b.mkdir()
+        with pytest.raises(SystemExit) as exc:
+            main(["--tasks-dir", str(a), "validate", str(b)])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "cannot pass both --tasks-dir and a positional" in err
+
+
+# ---------------------------------------------------------------------------
+# CLI: list --slug-contains
+# ---------------------------------------------------------------------------
+
+
+class TestCliListSlugContains:
+    """`list --slug-contains <substr>` filters by slug substring."""
+
+    def _setup(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        make_task(tmp_path, f"{prefix}001", "p2", "ready", "fix-login")
+        make_task(tmp_path, f"{prefix}002", "p1", "ready", "add-search")
+        make_task(tmp_path, f"{prefix}003", "p2", "in-progress", "fix-search")
+
+    def test_list_slug_contains_filters(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        self._setup(tmp_path)
+
+        main(["list", "--slug-contains", "fix", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "fix-login" in out
+        assert "fix-search" in out
+        assert "add-search" not in out
+
+        main(["list", "--slug-contains", "search", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "add-search" in out
+        assert "fix-search" in out
+        assert "fix-login" not in out
+
+        main(["list", "--slug-contains", "nonexistent", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "No tasks found." in out
+
+    def test_list_slug_contains_combines_with_status_filter(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        self._setup(tmp_path)
+        # ready tasks: fix-login, add-search
+        # slug contains 'fix': fix-login, fix-search
+        # intersection: fix-login
+        main([
+            "list",
+            "--status", "ready",
+            "--slug-contains", "fix",
+            str(tmp_path),
+        ])
+        out = capsys.readouterr().out
+        assert "fix-login" in out
+        assert "fix-search" not in out  # excluded by --status ready
+        assert "add-search" not in out  # excluded by --slug-contains fix
+
+
+# ---------------------------------------------------------------------------
+# CLI: fix bucketed text output
+# ---------------------------------------------------------------------------
+
+
+class TestCliFixBuckets:
+    """`fix` text output groups changes by bucket: frontmatter / rename / renumber."""
+
+    def test_fix_text_output_buckets_renames(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        # Legacy 4-digit ID -> migrated to numeric DDNNN format produces a rename.
+        make_legacy_task(tmp_path, 42, "p2", "ready", "old-task")
+        main(["fix", "--no-migrate", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "[rename] " in out
+
+    def test_fix_text_output_buckets_renumbers(self, tmp_path, capsys, monkeypatch):
+        import time
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        prefix = _prefix_for(tmp_path)
+        tid = f"{prefix}001"
+        make_task(tmp_path, tid, "p2", "ready", "alpha")
+        time.sleep(0.05)
+        make_task(tmp_path, tid, "p1", "done", "beta")
+        main(["fix", "--no-migrate", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "[renumber] " in out
+
+    def test_fix_text_output_buckets_frontmatter(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        prefix = _prefix_for(tmp_path)
+        path = tmp_path / f"{prefix}001-p2-ready--alpha.md"
+        path.write_text(
+            "---\ncreated: 2026-01-01\npriority: p2\n---\n\n# alpha\n\nbody\n"
+        )
+        main(["fix", "--migrate", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "[frontmatter] stripped:" in out
+
+
+# ---------------------------------------------------------------------------
+# CLI: fix refusal exits non-zero
+# ---------------------------------------------------------------------------
+
+
+class TestCliFixExitCode:
+    """When fix refuses on legacy frontmatter, it must exit non-zero."""
+
+    def test_fix_refusal_exits_nonzero(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        prefix = _prefix_for(tmp_path)
+        path = tmp_path / f"{prefix}001-p2-ready--alpha.md"
+        path.write_text(
+            "---\ncreated: 2026-01-01\npriority: p2\n---\n\n# alpha\n\nbody\n"
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["fix", str(tmp_path)])
+        assert exc.value.code == 1
+        # Frontmatter must NOT have been stripped (no migration flag).
+        assert path.read_text().startswith("---")

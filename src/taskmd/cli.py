@@ -1,17 +1,18 @@
 """taskmd CLI — thin wrapper over the library.
 
 Usage:
-    taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
+    taskmd [--agent] [--output json|text] [--tasks-dir P] <command> [options] [tasks_dir]
     taskmd new --slug S [--priority P] [--status ST] [tasks/] < body.md
     taskmd status <id> <new-status> [tasks/]
     taskmd validate [tasks/]
     taskmd fix [tasks/]
     taskmd next [tasks/]
-    taskmd list [--status STATUS] [--priority PRIORITY] [tasks/]
+    taskmd list [--status STATUS] [--priority PRIORITY] [--slug-contains S] [tasks/]
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -36,9 +37,11 @@ from taskmd.core import (
 )
 
 _DEFAULT_DIRS = ("tasks", "taskmds")
+_DEFAULT_INIT_DIR = _DEFAULT_DIRS[0]  # "tasks"
+_TEMPLATE_FILE = "_TEMPLATE.md"
 
 _HELP_TEXT = """\
-Usage: taskmd [--agent] [--output json|text] <command> [options] [tasks_dir]
+Usage: taskmd [--agent] [--output json|text] [--tasks-dir P] <command> [options] [tasks_dir]
 
 Commands:
   init       Create a new tasks directory with a template file
@@ -50,18 +53,27 @@ Commands:
   list       List all task files with metadata
 
 Options:
-  --version, -V     Print version and exit
-  --agent           Force agent mode (JSON output, structured --help)
-  --output FMT      Output format: json or text (default: text, json in agent mode)
-  --compact         With --help in agent mode: minimal schema (fewer tokens)
-  --slug S          (new) URL-safe slug; dirty input is normalized. Required.
-  --priority P      (new, list) Priority (default: p2 for 'new')
-  --status S        (new, list) Status (default: ready for 'new')
-  --migrate         (fix) Strip legacy YAML frontmatter from task files
-  --no-migrate      (fix) Skip the frontmatter migration check
+  --version, -V        Print version and exit
+  --agent              Force agent mode (JSON output, structured --help)
+  --output FMT         Output format: json or text (default: text, json in agent mode)
+  --compact            With --help in agent mode: minimal schema (fewer tokens)
+  --tasks-dir P        Override auto-detection. Mutually exclusive with positional tasks_dir.
+  --slug S             (new) URL-safe slug; dirty input is normalized. Required.
+  --priority P         (new, list) Priority (default: p2 for 'new')
+  --status S           (new, list) Status (default: ready for 'new')
+  --slug-contains S    (list) Filter by slug substring (case-sensitive)
+  --migrate            (fix) Strip legacy YAML frontmatter from task files
+  --no-migrate         (fix) Skip the frontmatter migration check
 
 Arguments:
-  tasks_dir         Path to tasks directory (default: ./tasks or ./taskmds)
+  tasks_dir         Path to tasks directory. If omitted, taskmd auto-detects
+                    by scanning task*/ for _TEMPLATE.md.
+
+Tasks directory:
+  taskmd auto-detects the tasks directory by looking for _TEMPLATE.md in any
+  direct subdir whose name starts with 'task' (lowercase). Default name is
+  'tasks/'; pass an explicit name to 'init' if that's taken
+  (e.g., 'taskmd init taskmds').
 
 Creating a task:
   echo "what this task is about" | taskmd new --slug fix-login
@@ -84,21 +96,34 @@ Changing status:
   receive the same ID)."""
 
 
-def _resolve_tasks_dir() -> Path:
-    """Return the first existing candidate directory, or 'tasks' as fallback."""
-    for name in reversed(_DEFAULT_DIRS):
-        p = Path(name)
-        if p.is_dir():
-            return p
-    return Path(_DEFAULT_DIRS[0])
+def _autodetect_tasks_dir() -> tuple[Path | None, list[str]]:
+    """Scan cwd for direct subdirs whose name starts with 'task' and contain
+    a _TEMPLATE.md marker file.
 
+    Returns:
+        (path, candidates):
+            - (Path, [name]) when exactly one match is found.
+            - (None, []) when no candidates are found.
+            - (None, [name1, name2, ...]) sorted alphabetically when 2+ are found.
+    """
+    cwd = Path.cwd()
+    matches: list[str] = []
+    try:
+        for entry in os.scandir(cwd):
+            if not entry.is_dir():
+                continue
+            name = entry.name
+            if not name.startswith("task"):
+                continue
+            if (Path(entry.path) / _TEMPLATE_FILE).is_file():
+                matches.append(name)
+    except OSError:
+        return None, []
 
-def _resolve_init_dir() -> Path:
-    """Return the default dir to create on `init`."""
-    primary = Path(_DEFAULT_DIRS[0])
-    if primary.exists():
-        return Path(_DEFAULT_DIRS[1])
-    return primary
+    matches.sort()
+    if len(matches) == 1:
+        return cwd / matches[0], matches
+    return None, matches
 
 
 def _parse_args(argv: list[str]) -> dict:
@@ -111,9 +136,12 @@ def _parse_args(argv: list[str]) -> dict:
         "version": False,
         "command": None,
         "tasks_dir": None,
+        "tasks_dir_flag": None,  # value of --tasks-dir, if provided
+        "tasks_dir_positional": None,  # positional tasks_dir, if provided
         "status": None,
         "priority": None,
         "slug": None,
+        "slug_contains": None,
         "migrate": None,  # None = prompt, True = migrate, False = skip
         "positional": [],
     }
@@ -150,6 +178,16 @@ def _parse_args(argv: list[str]) -> dict:
             opts["slug"] = argv[i]
         elif arg.startswith("--slug="):
             opts["slug"] = arg.split("=", 1)[1]
+        elif arg == "--slug-contains" and i + 1 < len(argv):
+            i += 1
+            opts["slug_contains"] = argv[i]
+        elif arg.startswith("--slug-contains="):
+            opts["slug_contains"] = arg.split("=", 1)[1]
+        elif arg == "--tasks-dir" and i + 1 < len(argv):
+            i += 1
+            opts["tasks_dir_flag"] = argv[i]
+        elif arg.startswith("--tasks-dir="):
+            opts["tasks_dir_flag"] = arg.split("=", 1)[1]
         elif arg == "--migrate":
             opts["migrate"] = True
         elif arg == "--no-migrate":
@@ -165,7 +203,8 @@ def _parse_args(argv: list[str]) -> dict:
     if positional:
         opts["command"] = positional[0]
     if len(positional) > 1 and positional[0] != "status":
-        opts["tasks_dir"] = Path(positional[1])
+        opts["tasks_dir_positional"] = Path(positional[1])
+        opts["tasks_dir"] = opts["tasks_dir_positional"]
     opts["positional"] = positional
 
     return opts
@@ -177,6 +216,85 @@ def _use_json(opts: dict) -> bool:
     if opts["output"] == "text":
         return False
     return is_agent_mode(opts["agent"])
+
+
+def _explicit_tasks_dir(opts: dict, *, command: str | None = None) -> Path | None:
+    """Return the explicit tasks_dir if the user passed one (--tasks-dir or
+    positional), else None.
+
+    Detects conflict between --tasks-dir and a positional tasks_dir: returns
+    the sentinel string "__conflict__" so the caller can emit an error and
+    exit. (We avoid raising here because the CLI handles its own error
+    presentation per output mode.)
+
+    The `command` arg is used to skip positional handling for `status`, whose
+    positional layout is `<id> <new-status> [tasks_dir]` (already excluded
+    from the parser's positional tasks_dir path, but we treat positional via
+    the tasks_dir_positional field; for status the positional dir is parsed
+    inside the command branch).
+    """
+    flag = opts.get("tasks_dir_flag")
+    pos = opts.get("tasks_dir_positional")
+    if flag is not None and pos is not None:
+        return "__conflict__"  # type: ignore[return-value]
+    if flag is not None:
+        return Path(flag)
+    if pos is not None:
+        return pos
+    return None
+
+
+def _resolve_read_tasks_dir(opts: dict, use_json: bool, command: str) -> Path:
+    """Resolve the tasks_dir for a read/write command (everything except init).
+
+    Order of precedence:
+        1. --tasks-dir flag (if both flag and positional, error & exit).
+        2. Positional tasks_dir.
+        3. Auto-detect via marker scan.
+
+    Errors and exits if 0 or 2+ candidates are found in auto-detect mode.
+    """
+    explicit = _explicit_tasks_dir(opts)
+    if explicit == "__conflict__":
+        msg = "cannot pass both --tasks-dir and a positional tasks_dir"
+        if use_json:
+            print(error_envelope(command, [msg]))
+        else:
+            print(f"error: {msg}.", file=sys.stderr)
+        sys.exit(1)
+    if explicit is not None:
+        return explicit  # type: ignore[return-value]
+
+    found, matches = _autodetect_tasks_dir()
+    if found is not None:
+        return found
+
+    if not matches:
+        msg = "no taskmd directory found in task* subdirs of ./. Run 'taskmd init' to create one."
+        if use_json:
+            print(error_envelope(
+                command,
+                [msg],
+                suggestions=["Run 'taskmd init' to create ./tasks/"],
+            ))
+        else:
+            print(f"error: {msg}", file=sys.stderr)
+        sys.exit(1)
+
+    # 2+ matches
+    listing = ", ".join(f"{m}/" for m in matches)
+    msg = f"multiple taskmd directories found: {listing}. Pass --tasks-dir to disambiguate."
+    if use_json:
+        print(error_envelope(
+            command,
+            [msg],
+            suggestions=[
+                "Pass --tasks-dir <path> to pick one explicitly",
+            ],
+        ))
+    else:
+        print(f"error: {msg}", file=sys.stderr)
+    sys.exit(1)
 
 
 def _task_to_dict(task) -> dict:
@@ -208,7 +326,41 @@ def main(argv: list[str] | None = None) -> None:
     command = opts["command"]
 
     if command == "init":
-        tasks_dir = opts["tasks_dir"] or _resolve_init_dir()
+        explicit = _explicit_tasks_dir(opts)
+        if explicit == "__conflict__":
+            msg = "cannot pass both --tasks-dir and a positional tasks_dir"
+            if use_json:
+                print(error_envelope("init", [msg]))
+            else:
+                print(f"error: {msg}.", file=sys.stderr)
+            sys.exit(1)
+
+        if explicit is not None:
+            tasks_dir = explicit  # type: ignore[assignment]
+        else:
+            # Strict default: ./tasks. If it already exists, refuse.
+            default_dir = Path(_DEFAULT_INIT_DIR)
+            if default_dir.exists():
+                msg = (
+                    f"tasks directory already exists at ./{_DEFAULT_INIT_DIR}. "
+                    f"Pass an explicit name (e.g. 'taskmd init taskmds') to "
+                    f"create a different directory, or run 'taskmd validate' "
+                    f"to check the existing one."
+                )
+                if use_json:
+                    print(error_envelope(
+                        "init",
+                        [msg],
+                        suggestions=[
+                            "taskmd init taskmds",
+                            "taskmd validate",
+                        ],
+                    ))
+                else:
+                    print(f"error: {msg}", file=sys.stderr)
+                sys.exit(1)
+            tasks_dir = default_dir
+
         result = init(tasks_dir)
         if use_json:
             if result.ok:
@@ -237,7 +389,7 @@ def main(argv: list[str] | None = None) -> None:
                 sys.exit(1)
         return
 
-    tasks_dir = opts["tasks_dir"] or _resolve_tasks_dir()
+    tasks_dir = _resolve_read_tasks_dir(opts, use_json, command)
 
     if command == "validate":
         result = validate(tasks_dir)
@@ -360,18 +512,25 @@ def main(argv: list[str] | None = None) -> None:
                         print(f"  - {err}")
                 sys.exit(1)
             else:
+                # Bucketed output: frontmatter -> rename -> renumber -> notes -> summary.
                 for name in result.frontmatter_stripped:
-                    print(f"  stripped frontmatter: {name}")
+                    print(f"[frontmatter] stripped: {name}")
                 for old, new in result.renames:
-                    print(f"  {old} -> {new}")
+                    print(f"[rename] {old} -> {new}")
                 if result.migrated:
-                    print(f"  Note: {result.migrated} file(s) migrated to numeric ID format")
+                    print(
+                        f"[migrate] note: {result.migrated} file(s) migrated to "
+                        "numeric ID format"
+                    )
                 for old_id, new_id, old_name, new_name in result.renumbered:
-                    print(f"  renumbered: {old_id} -> {new_id} ({old_name} -> {new_name})")
+                    print(
+                        f"[renumber] {old_id} -> {new_id} "
+                        f"({old_name} -> {new_name})"
+                    )
                 if result.renumbered:
                     print(
-                        "  Note: cross-references to old IDs are NOT rewritten; "
-                        "grep the mapping above."
+                        "[renumber] note: cross-references to old IDs are NOT "
+                        "rewritten; grep the mapping above."
                     )
                 print(f"✓ {result.summary()}")
 
@@ -481,9 +640,54 @@ def main(argv: list[str] | None = None) -> None:
         positional = opts["positional"]
         task_id = positional[1] if len(positional) > 1 else None
         new_status = positional[2] if len(positional) > 2 else None
-        status_tasks_dir = (
-            Path(positional[3]) if len(positional) > 3 else _resolve_tasks_dir()
-        )
+
+        # Resolve tasks_dir for status. Precedence:
+        #   1. --tasks-dir flag (if positional[3] also present, it's a conflict).
+        #   2. Positional positional[3].
+        #   3. Auto-detect.
+        flag_dir = opts.get("tasks_dir_flag")
+        pos_dir = positional[3] if len(positional) > 3 else None
+        if flag_dir is not None and pos_dir is not None:
+            msg = "cannot pass both --tasks-dir and a positional tasks_dir"
+            if use_json:
+                print(error_envelope("status", [msg]))
+            else:
+                print(f"error: {msg}.", file=sys.stderr)
+            sys.exit(1)
+        if flag_dir is not None:
+            status_tasks_dir = Path(flag_dir)
+        elif pos_dir is not None:
+            status_tasks_dir = Path(pos_dir)
+        else:
+            # Resolve via marker auto-detect.
+            found, matches = _autodetect_tasks_dir()
+            if found is not None:
+                status_tasks_dir = found
+            elif not matches:
+                msg = (
+                    "no taskmd directory found in task* subdirs of ./. "
+                    "Run 'taskmd init' to create one."
+                )
+                if use_json:
+                    print(error_envelope(
+                        "status",
+                        [msg],
+                        suggestions=["Run 'taskmd init' to create ./tasks/"],
+                    ))
+                else:
+                    print(f"error: {msg}", file=sys.stderr)
+                sys.exit(1)
+            else:
+                listing = ", ".join(f"{m}/" for m in matches)
+                msg = (
+                    f"multiple taskmd directories found: {listing}. "
+                    "Pass --tasks-dir to disambiguate."
+                )
+                if use_json:
+                    print(error_envelope("status", [msg]))
+                else:
+                    print(f"error: {msg}", file=sys.stderr)
+                sys.exit(1)
 
         if not task_id or not new_status:
             msg = "'status' requires <id> and <new-status>"
@@ -576,6 +780,9 @@ def main(argv: list[str] | None = None) -> None:
                     print(f"Error: {msg}", file=sys.stderr)
                 sys.exit(1)
             tasks = [t for t in tasks if t.priority == opts["priority"]]
+        if opts["slug_contains"]:
+            needle = opts["slug_contains"]
+            tasks = [t for t in tasks if needle in t.slug]
 
         if use_json:
             print(success_envelope(
