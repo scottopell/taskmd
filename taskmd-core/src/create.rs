@@ -48,10 +48,15 @@ pub fn create_task(
         )));
     }
 
-    let slug = derive_slug(slug);
-    if slug.is_empty() {
-        return Err(Error::InvalidValue("slug cannot be empty".into()));
+    // Validate the raw input before normalization. `derive_slug` falls back
+    // to "untitled" for any input that produces an empty slug (whitespace
+    // only, all punctuation, etc.), which would silently mask a missing slug.
+    if !slug.chars().any(|c| c.is_ascii_alphanumeric()) {
+        return Err(Error::InvalidValue(
+            "slug must contain at least one alphanumeric character".into(),
+        ));
     }
+    let slug = derive_slug(slug);
 
     if !tasks_dir.exists() {
         return Err(Error::NotFound(format!(
@@ -141,6 +146,21 @@ mod tests {
         let tmp = tasks_dir();
         let r = create_task(tmp.path(), "p2", "pending", "s", "body");
         assert!(matches!(r, Err(Error::InvalidValue(_))));
+    }
+
+    #[test]
+    fn rejects_slug_with_no_alphanumerics() {
+        // Inputs that derive_slug would silently turn into "untitled" must
+        // be rejected up front, otherwise callers can construct nonsensical
+        // tasks by passing whitespace, punctuation, or empty strings.
+        let tmp = tasks_dir();
+        for slug in ["", "   ", "\t", "!!!", "---", "  / \n "] {
+            let r = create_task(tmp.path(), "p2", "ready", slug, "body");
+            assert!(
+                matches!(r, Err(Error::InvalidValue(_))),
+                "expected InvalidValue for slug {slug:?}, got {r:?}",
+            );
+        }
     }
 
     /// Regression: every input `create_task` accepts must produce a file that

@@ -236,10 +236,25 @@ def main(argv: list[str] | None = None) -> None:
         result = validate(tasks_dir)
         if use_json:
             if result.errors:
+                # Tailor suggestions to the kinds of errors present. `fix`
+                # only handles duplicate IDs and legacy ID migration; it
+                # cannot repair a filename that doesn't match the pattern.
+                has_duplicate = any("duplicate task id" in e for e in result.errors)
+                has_pattern = any("doesn't match pattern" in e for e in result.errors)
+                suggestions: list[str] = []
+                if has_duplicate:
+                    suggestions.append(
+                        "Run 'taskmd fix' to auto-renumber duplicate IDs"
+                    )
+                if has_pattern:
+                    suggestions.append(
+                        "Rename non-conforming files to match DDNNN-pX-status--slug.md "
+                        "(taskmd fix cannot repair these)"
+                    )
                 print(error_envelope(
                     "validate",
                     result.errors,
-                    suggestions=["Run 'taskmd fix' to auto-repair fixable issues"],
+                    suggestions=suggestions or None,
                 ))
                 sys.exit(1)
             else:
@@ -254,7 +269,13 @@ def main(argv: list[str] | None = None) -> None:
                 for err in result.errors:
                     print(f"  - {err}")
                 print()
-                print("Run 'taskmd fix' to auto-fix.")
+                if any("duplicate task id" in e for e in result.errors):
+                    print("Run 'taskmd fix' to auto-renumber duplicate IDs.")
+                if any("doesn't match pattern" in e for e in result.errors):
+                    print(
+                        "Rename non-conforming files to match "
+                        "DDNNN-pX-status--slug.md (taskmd fix cannot repair these)."
+                    )
                 sys.exit(1)
             else:
                 print(f"✓ {result.file_count} task files validated")

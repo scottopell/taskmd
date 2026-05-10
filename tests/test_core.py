@@ -363,6 +363,59 @@ class TestValidateMentionsFix:
         assert all("taskmd fix" in e for e in dup_errors), dup_errors
 
 
+class TestCliValidateSuggestions:
+    """`taskmd validate` should tailor its remediation suggestions to the
+    actual errors. `taskmd fix` cannot repair filename-pattern violations,
+    so the suggestion text must be different in that case."""
+
+    def test_pattern_only_does_not_recommend_fix(self, tmp_path, capsys, monkeypatch):
+        import json
+        from taskmd.cli import main
+        monkeypatch.setenv("FORCE_AGENT_MODE", "1")
+        (tmp_path / "not-a-task.md").write_text("# x\n")
+        with pytest.raises(SystemExit) as exc:
+            main(["validate", str(tmp_path)])
+        assert exc.value.code == 1
+        obj = json.loads(capsys.readouterr().out)
+        assert obj["status"] == "error"
+        suggestions = obj.get("suggestions", [])
+        assert any("Rename" in s for s in suggestions)
+        assert not any("auto-renumber" in s for s in suggestions)
+        assert not any("auto-repair" in s for s in suggestions)
+
+    def test_duplicate_only_recommends_fix(self, tmp_path, capsys, monkeypatch):
+        import json
+        from taskmd.cli import main
+        monkeypatch.setenv("FORCE_AGENT_MODE", "1")
+        prefix = _prefix_for(tmp_path)
+        make_task(tmp_path, f"{prefix}001", "p2", "ready", "alpha")
+        make_task(tmp_path, f"{prefix}001", "p1", "done", "beta")
+        with pytest.raises(SystemExit) as exc:
+            main(["validate", str(tmp_path)])
+        assert exc.value.code == 1
+        obj = json.loads(capsys.readouterr().out)
+        assert obj["status"] == "error"
+        suggestions = obj.get("suggestions", [])
+        assert any("auto-renumber" in s for s in suggestions)
+        assert not any("Rename" in s for s in suggestions)
+
+    def test_both_kinds_recommend_both(self, tmp_path, capsys, monkeypatch):
+        import json
+        from taskmd.cli import main
+        monkeypatch.setenv("FORCE_AGENT_MODE", "1")
+        prefix = _prefix_for(tmp_path)
+        make_task(tmp_path, f"{prefix}001", "p2", "ready", "alpha")
+        make_task(tmp_path, f"{prefix}001", "p1", "done", "beta")
+        (tmp_path / "not-a-task.md").write_text("# x\n")
+        with pytest.raises(SystemExit) as exc:
+            main(["validate", str(tmp_path)])
+        assert exc.value.code == 1
+        obj = json.loads(capsys.readouterr().out)
+        suggestions = obj.get("suggestions", [])
+        assert any("auto-renumber" in s for s in suggestions)
+        assert any("Rename" in s for s in suggestions)
+
+
 # ---------------------------------------------------------------------------
 # next_id
 # ---------------------------------------------------------------------------
