@@ -57,6 +57,8 @@ Options:
   --slug S          (new) URL-safe slug; dirty input is normalized. Required.
   --priority P      (new, list) Priority (default: p2 for 'new')
   --status S        (new, list) Status (default: ready for 'new')
+  --migrate         (fix) Strip legacy YAML frontmatter from task files
+  --no-migrate      (fix) Skip the frontmatter migration check
 
 Arguments:
   tasks_dir         Path to tasks directory (default: ./tasks or ./taskmds)
@@ -112,6 +114,7 @@ def _parse_args(argv: list[str]) -> dict:
         "status": None,
         "priority": None,
         "slug": None,
+        "migrate": None,  # None = prompt, True = migrate, False = skip
         "positional": [],
     }
 
@@ -147,6 +150,10 @@ def _parse_args(argv: list[str]) -> dict:
             opts["slug"] = argv[i]
         elif arg.startswith("--slug="):
             opts["slug"] = arg.split("=", 1)[1]
+        elif arg == "--migrate":
+            opts["migrate"] = True
+        elif arg == "--no-migrate":
+            opts["migrate"] = False
         elif arg.startswith("-"):
             print(f"Unknown flag: {arg}", file=sys.stderr)
             print("Run 'taskmd --help' for usage.", file=sys.stderr)
@@ -281,13 +288,25 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"✓ {result.file_count} task files validated")
 
     elif command == "fix":
-        result = fix(tasks_dir)
+        result = fix(tasks_dir, migrate=opts["migrate"])
         if use_json:
             if result.errors:
+                # If the only error is the migration prompt, surface the
+                # pending file list as data so agents can act on it.
+                data: dict = {}
+                suggestions: list[str]
+                if result.frontmatter_pending:
+                    data["frontmatter_pending"] = list(result.frontmatter_pending)
+                    suggestions = [
+                        "Run 'taskmd fix --migrate' to strip the frontmatter (destructive — commit first)",
+                        "Run 'taskmd fix --no-migrate' to skip the check this run",
+                    ]
+                else:
+                    suggestions = ["Run 'taskmd validate' to see all issues"]
                 print(error_envelope(
                     "fix",
                     result.errors,
-                    suggestions=["Run 'taskmd validate' to see all issues"],
+                    suggestions=suggestions,
                 ))
                 sys.exit(1)
             else:
@@ -306,18 +325,42 @@ def main(argv: list[str] | None = None) -> None:
                             }
                             for oid, nid, old, new in result.renumbered
                         ],
+                        "frontmatter_stripped": list(result.frontmatter_stripped),
                     },
                     renamed=result.renamed,
                     migrated=result.migrated,
                     renumbered=len(result.renumbered),
+                    frontmatter_stripped=len(result.frontmatter_stripped),
                 ))
         else:
             if result.errors:
-                print(f"✗ {len(result.errors)} error(s):")
-                for err in result.errors:
-                    print(f"  - {err}")
+                # The migration-prompt error has its own dedicated layout.
+                if result.frontmatter_pending:
+                    n = len(result.frontmatter_pending)
+                    print(
+                        f"✗ {n} task file(s) have legacy YAML frontmatter "
+                        "that must be removed:"
+                    )
+                    for name in result.frontmatter_pending:
+                        print(f"  - {name}")
+                    print()
+                    print(
+                        "Frontmatter is no longer used; the filename is the sole "
+                        "source of truth."
+                    )
+                    print()
+                    print("  taskmd fix --migrate     "
+                          "# strip the frontmatter (destructive — commit first)")
+                    print("  taskmd fix --no-migrate  "
+                          "# skip the migration check this run")
+                else:
+                    print(f"✗ {len(result.errors)} error(s):")
+                    for err in result.errors:
+                        print(f"  - {err}")
                 sys.exit(1)
             else:
+                for name in result.frontmatter_stripped:
+                    print(f"  stripped frontmatter: {name}")
                 for old, new in result.renames:
                     print(f"  {old} -> {new}")
                 if result.migrated:

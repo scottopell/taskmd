@@ -115,18 +115,28 @@ fn validate(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
 // ── Fix ───────────────────────────────────────────────────────────────────────
 
 #[pyfunction]
-fn fix_summary(renamed: usize, migrated: usize, renumbered: usize) -> String {
-    fix::fix_summary(renamed, migrated, renumbered)
+fn fix_summary(renamed: usize, migrated: usize, renumbered: usize, frontmatter_stripped: usize) -> String {
+    fix::fix_summary(renamed, migrated, renumbered, frontmatter_stripped)
 }
 
+/// `migrate`: None (default) prompts, Some(true) strips frontmatter,
+/// Some(false) skips the frontmatter check.
 #[pyfunction]
-fn do_fix(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>> {
-    let r = fix::fix(Path::new(tasks_dir));
+#[pyo3(signature = (tasks_dir, migrate=None))]
+fn do_fix(py: Python<'_>, tasks_dir: &str, migrate: Option<bool>) -> PyResult<Py<PyAny>> {
+    let mode = match migrate {
+        None => fix::MigrateMode::Prompt,
+        Some(true) => fix::MigrateMode::Migrate,
+        Some(false) => fix::MigrateMode::Skip,
+    };
+    let r = fix::fix(Path::new(tasks_dir), mode);
     let dict = PyDict::new(py);
     dict.set_item("renamed", r.renamed)?;
     dict.set_item("migrated", r.migrated)?;
     dict.set_item("renames", r.renames)?;
     dict.set_item("renumbered", r.renumbered)?;
+    dict.set_item("frontmatter_stripped", r.frontmatter_stripped)?;
+    dict.set_item("frontmatter_pending", r.frontmatter_pending)?;
     dict.set_item("errors", r.errors)?;
     Ok(dict.into_any().unbind())
 }

@@ -3,17 +3,74 @@ use std::path::{Path, PathBuf};
 use crate::filename::{format_filename, parse_filename};
 use crate::ids::{needs_migration, next_id, parse_id_parts, prefix_for};
 use crate::tasks::{parse_task_file, task_files};
+use crate::util::normalize_line_endings;
 
 /// Maximum sequence number that fits in the 3-digit NNN suffix.
 /// Files with a sequence above this cannot be migrated automatically.
 const MAX_SEQ: u32 = 999;
 
+/// How `fix` should treat task files that still carry legacy YAML frontmatter.
+///
+/// Frontmatter is no longer part of the task format, but pre-1.0 files in
+/// existing repos still have it. Stripping it is destructive (the YAML block
+/// is removed from the file body), so the user must opt in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MigrateMode {
+    /// Default: refuse to run if any file has frontmatter, returning an error
+    /// that names the files and points the user at `--migrate` / `--no-migrate`.
+    Prompt,
+    /// Strip frontmatter from every file that has it before doing the rest
+    /// of the fix work. Destructive — caller is responsible for committing
+    /// first.
+    Migrate,
+    /// Skip the frontmatter check entirely. Files keep whatever frontmatter
+    /// they have; `fix` just does ID migration and dup renumber.
+    Skip,
+}
+
+/// Strip a leading YAML frontmatter block from `content`, returning the
+/// remaining body. Returns `None` if the content does not start with a
+/// well-formed frontmatter block (`---\n...\n---\n`).
+///
+/// The returned body has any leading newlines after the closing `---`
+/// trimmed, so a typical file with a blank line between the closing `---`
+/// and the H1 will simply start at the H1 after stripping.
+fn strip_frontmatter(content: &str) -> Option<String> {
+    let normalized = normalize_line_endings(content);
+    let s: &str = &normalized;
+    let open = "---\n";
+    if !s.starts_with(open) {
+        return None;
+    }
+    let close = "\n---\n";
+    let after_open = open.len();
+    let close_at = s[after_open..].find(close)?;
+    let body_start = after_open + close_at + close.len();
+    let body = s[body_start..].trim_start_matches('\n');
+    Some(body.to_string())
+}
+
+/// True if `content` starts with a well-formed YAML frontmatter block.
+pub fn has_frontmatter(content: &str) -> bool {
+    strip_frontmatter(content).is_some()
+}
+
 /// Compute the human-readable fix summary from the change counters.
-pub fn fix_summary(renamed: usize, migrated: usize, renumbered: usize) -> String {
-    if renamed == 0 && migrated == 0 && renumbered == 0 {
+pub fn fix_summary(
+    renamed: usize,
+    migrated: usize,
+    renumbered: usize,
+    frontmatter_stripped: usize,
+) -> String {
+    if renamed == 0 && migrated == 0 && renumbered == 0 && frontmatter_stripped == 0 {
         return "All files already correct".to_string();
     }
     let mut parts: Vec<String> = vec![];
+    if frontmatter_stripped > 0 {
+        parts.push(format!(
+            "stripped frontmatter from {frontmatter_stripped} file(s)"
+        ));
+    }
     if renamed > 0 {
         parts.push(format!("renamed {renamed} file(s)"));
     }
@@ -45,6 +102,13 @@ pub struct FixResult {
     /// `old_id` elsewhere in the repo are intentionally NOT rewritten — this
     /// list is the hand-off so a human can grep and patch.
     pub renumbered: Vec<(String, String, String, String)>,
+    /// Filenames whose YAML frontmatter was stripped (only set when
+    /// `MigrateMode::Migrate` is passed).
+    pub frontmatter_stripped: Vec<String>,
+    /// Filenames detected as having frontmatter when `MigrateMode::Prompt`
+    /// is in effect. Pairs with a single error in `errors` to let callers
+    /// surface a list to the user.
+    pub frontmatter_pending: Vec<String>,
     pub errors: Vec<String>,
 }
 
@@ -54,7 +118,12 @@ impl FixResult {
     }
 
     pub fn summary(&self) -> String {
-        fix_summary(self.renamed, self.migrated, self.renumbered.len())
+        fix_summary(
+            self.renamed,
+            self.migrated,
+            self.renumbered.len(),
+            self.frontmatter_stripped.len(),
+        )
     }
 }
 
@@ -127,14 +196,16 @@ fn mtime_unix(path: &Path) -> Option<i128> {
     Some(d.as_nanos() as i128)
 }
 
-/// Auto-fix task files: migrate legacy IDs to the numeric format, and
-/// renumber files that share a duplicate ID.
-pub fn fix(tasks_dir: &Path) -> FixResult {
+/// Auto-fix task files: optionally strip legacy frontmatter, migrate legacy
+/// IDs to the numeric format, and renumber files that share a duplicate ID.
+pub fn fix(tasks_dir: &Path, migrate_mode: MigrateMode) -> FixResult {
     let mut result = FixResult {
         renamed: 0,
         migrated: 0,
         renames: vec![],
         renumbered: vec![],
+        frontmatter_stripped: vec![],
+        frontmatter_pending: vec![],
         errors: vec![],
     };
 
@@ -149,6 +220,70 @@ pub fn fix(tasks_dir: &Path) -> FixResult {
             return result;
         }
     };
+
+    // Frontmatter migration runs before everything else so the rest of fix
+    // operates on already-migrated content.
+    match migrate_mode {
+        MigrateMode::Skip => {}
+        MigrateMode::Prompt => {
+            for path in &files {
+                let content = match std::fs::read_to_string(path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                if has_frontmatter(&content) {
+                    let name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned();
+                    result.frontmatter_pending.push(name);
+                }
+            }
+            if !result.frontmatter_pending.is_empty() {
+                let n = result.frontmatter_pending.len();
+                result.errors.push(format!(
+                    "{n} task file(s) have legacy YAML frontmatter that must be \
+                     removed. Run 'taskmd fix --migrate' to strip it (destructive; \
+                     commit first), or 'taskmd fix --no-migrate' to skip the check"
+                ));
+                return result;
+            }
+        }
+        MigrateMode::Migrate => {
+            for path in &files {
+                let content = match std::fs::read_to_string(path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let name = path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned();
+                        result.errors.push(format!("{name}: cannot read: {e}"));
+                        continue;
+                    }
+                };
+                if let Some(new_body) = strip_frontmatter(&content) {
+                    if let Err(e) = std::fs::write(path, &new_body) {
+                        let name = path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned();
+                        result.errors.push(format!("{name}: cannot write: {e}"));
+                        continue;
+                    }
+                    result.frontmatter_stripped.push(
+                        path.file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
+                }
+            }
+        }
+    }
 
     let prefix = prefix_for(tasks_dir);
 
@@ -347,7 +482,7 @@ mod tests {
         let prefix = prefix_for(tmp.path());
         write_task(tmp.path(), &format!("{prefix}001"), "p2", "ready", "a");
         write_task(tmp.path(), &format!("{prefix}002"), "p2", "ready", "b");
-        let r = fix(tmp.path());
+        let r = fix(tmp.path(), MigrateMode::Skip);
         assert!(r.ok(), "{:?}", r.errors);
         assert_eq!(r.renumbered.len(), 0);
     }
@@ -361,7 +496,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50));
         let loser = write_task(tmp.path(), &id, "p1", "done", "loser");
 
-        let r = fix(tmp.path());
+        let r = fix(tmp.path(), MigrateMode::Skip);
         assert_eq!(r.renumbered.len(), 1, "{:?}", r);
         let (old_id, new_id, old_name, new_name) = &r.renumbered[0];
         assert_eq!(old_id, &id);
@@ -385,7 +520,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50));
         write_task(tmp.path(), &id, "p2", "ready", "c-third");
 
-        let r = fix(tmp.path());
+        let r = fix(tmp.path(), MigrateMode::Skip);
         assert!(r.ok(), "{:?}", r.errors);
         assert_eq!(r.renumbered.len(), 2);
 
@@ -406,7 +541,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50));
         write_task(tmp.path(), &id, "p0", "done", "beta");
 
-        let r = fix(tmp.path());
+        let r = fix(tmp.path(), MigrateMode::Skip);
         assert_eq!(r.renumbered.len(), 1);
         let (_, _, _, new_name) = &r.renumbered[0];
         assert!(new_name.contains("-p0-done--beta.md"), "got: {new_name}");
@@ -421,7 +556,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50));
         let alpha = write_task(tmp.path(), &id, "p2", "ready", "alpha");
 
-        let r = fix(tmp.path());
+        let r = fix(tmp.path(), MigrateMode::Skip);
         assert_eq!(r.renumbered.len(), 1);
         let (_, _, old_name, _) = &r.renumbered[0];
         assert!(old_name.contains("alpha"));
@@ -447,7 +582,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50));
         write_task(tmp.path(), &id, "p2", "ready", "second");
 
-        let r = fix(tmp.path());
+        let r = fix(tmp.path(), MigrateMode::Skip);
         assert_eq!(r.renamed, 0);
         assert_eq!(r.renames.len(), 0);
         assert_eq!(r.renumbered.len(), 1);
@@ -462,10 +597,10 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50));
         write_task(tmp.path(), &id, "p2", "ready", "b");
 
-        let r1 = fix(tmp.path());
+        let r1 = fix(tmp.path(), MigrateMode::Skip);
         assert_eq!(r1.renumbered.len(), 1);
 
-        let r2 = fix(tmp.path());
+        let r2 = fix(tmp.path(), MigrateMode::Skip);
         assert_eq!(r2.renumbered.len(), 0);
         assert_eq!(r2.renamed, 0);
     }
@@ -481,7 +616,7 @@ mod tests {
         )
         .unwrap();
 
-        let r = fix(tmp.path());
+        let r = fix(tmp.path(), MigrateMode::Skip);
         assert!(r.ok(), "{:?}", r.errors);
         assert!(tmp.path().join(format!("{prefix}042-p2-ready--existing.md")).exists());
         assert!(!tmp.path().join("0042-p2-ready--legacy.md").exists());
@@ -489,11 +624,109 @@ mod tests {
 
     #[test]
     fn summary_reports_renumber_count() {
-        assert_eq!(fix_summary(0, 0, 2), "Renumbered 2 duplicate ID(s)");
+        assert_eq!(fix_summary(0, 0, 2, 0), "Renumbered 2 duplicate ID(s)");
         assert_eq!(
-            fix_summary(1, 0, 1),
+            fix_summary(1, 0, 1, 0),
             "Renamed 1 file(s), renumbered 1 duplicate ID(s)"
         );
-        assert_eq!(fix_summary(0, 0, 0), "All files already correct");
+        assert_eq!(fix_summary(0, 0, 0, 0), "All files already correct");
+        assert_eq!(
+            fix_summary(0, 0, 0, 2),
+            "Stripped frontmatter from 2 file(s)"
+        );
+    }
+
+    // -- Frontmatter migration --------------------------------------------
+
+    fn write_with_frontmatter(dir: &Path, id: &str, slug: &str) -> PathBuf {
+        let filename = format!("{id}-p2-ready--{slug}.md");
+        let content = format!(
+            "---\ncreated: 2026-01-01\npriority: p2\nstatus: ready\nartifact: x\n---\n\n# {slug}\n\nbody\n"
+        );
+        let path = dir.join(&filename);
+        fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn prompt_mode_fails_when_frontmatter_present() {
+        let tmp = TempDir::new().unwrap();
+        let prefix = prefix_for(tmp.path());
+        write_with_frontmatter(tmp.path(), &format!("{prefix}001"), "alpha");
+
+        let r = fix(tmp.path(), MigrateMode::Prompt);
+        assert!(!r.ok());
+        assert_eq!(r.frontmatter_pending.len(), 1);
+        assert!(r.frontmatter_pending[0].contains("alpha"));
+        assert!(r.errors[0].contains("--migrate"));
+        assert!(r.errors[0].contains("--no-migrate"));
+    }
+
+    #[test]
+    fn prompt_mode_passes_when_no_frontmatter() {
+        let tmp = TempDir::new().unwrap();
+        let prefix = prefix_for(tmp.path());
+        write_task(tmp.path(), &format!("{prefix}001"), "p2", "ready", "alpha");
+
+        let r = fix(tmp.path(), MigrateMode::Prompt);
+        assert!(r.ok(), "{:?}", r.errors);
+        assert_eq!(r.frontmatter_pending.len(), 0);
+    }
+
+    #[test]
+    fn migrate_mode_strips_frontmatter() {
+        let tmp = TempDir::new().unwrap();
+        let prefix = prefix_for(tmp.path());
+        let path = write_with_frontmatter(tmp.path(), &format!("{prefix}001"), "alpha");
+
+        let r = fix(tmp.path(), MigrateMode::Migrate);
+        assert!(r.ok(), "{:?}", r.errors);
+        assert_eq!(r.frontmatter_stripped.len(), 1);
+
+        let new_content = fs::read_to_string(&path).unwrap();
+        assert!(!new_content.starts_with("---"));
+        assert!(new_content.starts_with("# alpha"));
+        assert!(new_content.contains("body"));
+    }
+
+    #[test]
+    fn migrate_mode_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let prefix = prefix_for(tmp.path());
+        write_with_frontmatter(tmp.path(), &format!("{prefix}001"), "alpha");
+
+        fix(tmp.path(), MigrateMode::Migrate);
+        let r2 = fix(tmp.path(), MigrateMode::Migrate);
+        assert_eq!(r2.frontmatter_stripped.len(), 0);
+        assert!(r2.ok());
+    }
+
+    #[test]
+    fn skip_mode_leaves_frontmatter_alone() {
+        let tmp = TempDir::new().unwrap();
+        let prefix = prefix_for(tmp.path());
+        let path = write_with_frontmatter(tmp.path(), &format!("{prefix}001"), "alpha");
+
+        let r = fix(tmp.path(), MigrateMode::Skip);
+        assert!(r.ok());
+        assert_eq!(r.frontmatter_stripped.len(), 0);
+        assert_eq!(r.frontmatter_pending.len(), 0);
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("---"));
+    }
+
+    #[test]
+    fn strip_frontmatter_returns_none_for_no_frontmatter() {
+        assert!(strip_frontmatter("# Hello\n").is_none());
+        assert!(strip_frontmatter("").is_none());
+        assert!(strip_frontmatter("---\nopen but no close").is_none());
+    }
+
+    #[test]
+    fn strip_frontmatter_handles_well_formed_block() {
+        let s = "---\nfoo: bar\n---\n\n# Title\n\nbody\n";
+        let stripped = strip_frontmatter(s).unwrap();
+        assert_eq!(stripped, "# Title\n\nbody\n");
     }
 }

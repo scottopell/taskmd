@@ -124,9 +124,13 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "output": "ValidationResult with errors[] and file_count",
         },
         "fix": {
-            "description": "Auto-repair fixable issues (legacy ID formats, duplicate task IDs)",
-            "args": {"tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"}},
-            "output": "FixResult with renames[], migrated count, renumbered[] (old_id/new_id/old_filename/new_filename for each duplicate-ID loser — cross-references NOT auto-patched), errors[]",
+            "description": "Auto-repair fixable issues (legacy ID formats, duplicate task IDs). On first run after upgrading from a frontmatter-bearing version, fix will refuse and prompt for --migrate (strip frontmatter, destructive) or --no-migrate (skip the check).",
+            "args": {
+                "tasks_dir": {"type": "path", "default": "./tasks or ./taskmds"},
+                "--migrate": {"type": "flag", "description": "Strip legacy YAML frontmatter from every task file that has it (destructive — commit first)."},
+                "--no-migrate": {"type": "flag", "description": "Skip the frontmatter migration check entirely."},
+            },
+            "output": "FixResult with renames[], migrated count, renumbered[] (old_id/new_id/old_filename/new_filename for each duplicate-ID loser — cross-references NOT auto-patched), frontmatter_stripped[] (filenames whose YAML frontmatter was removed), errors[]. When neither --migrate nor --no-migrate is passed and frontmatter is detected, fix returns an error envelope whose data.frontmatter_pending lists the affected files.",
         },
         "next": {
             "description": "Print the next available task ID (prefix derived from hostname + directory path). DISCOURAGED: this is a read-only advisory that doesn't claim the ID — two concurrent callers can receive the same ID. Prefer 'taskmd new' for creation; use 'next' only for integrations that must do their own write path.",

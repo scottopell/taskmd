@@ -349,6 +349,126 @@ class TestFix:
         assert "renumbered" in result.summary().lower()
 
 
+class TestFixFrontmatterMigration:
+    """`fix` requires opt-in to strip legacy YAML frontmatter."""
+
+    def _make_fm_task(self, tasks_dir, task_id, slug):
+        filename = f"{task_id}-p2-ready--{slug}.md"
+        path = tasks_dir / filename
+        path.write_text(
+            "---\ncreated: 2026-01-01\npriority: p2\nstatus: ready\n"
+            "artifact: x\n---\n\n# " + slug + "\n\nbody\n"
+        )
+        return path
+
+    def test_default_fails_when_frontmatter_present(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
+        result = fix(tmp_path)
+        assert not result.ok
+        assert len(result.frontmatter_pending) == 1
+        assert "alpha" in result.frontmatter_pending[0]
+        assert any("--migrate" in e for e in result.errors)
+        assert any("--no-migrate" in e for e in result.errors)
+
+    def test_default_passes_when_no_frontmatter(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        make_task(tmp_path, f"{prefix}001", "p2", "ready", "alpha")
+        result = fix(tmp_path)
+        assert result.ok, result.errors
+        assert result.frontmatter_pending == []
+
+    def test_migrate_strips_frontmatter(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        path = self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
+        result = fix(tmp_path, migrate=True)
+        assert result.ok, result.errors
+        assert len(result.frontmatter_stripped) == 1
+        content = path.read_text()
+        assert not content.startswith("---")
+        assert content.startswith("# alpha")
+
+    def test_no_migrate_leaves_frontmatter_alone(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        path = self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
+        result = fix(tmp_path, migrate=False)
+        assert result.ok, result.errors
+        assert result.frontmatter_stripped == []
+        assert path.read_text().startswith("---")
+
+    def test_summary_mentions_stripped(self, tmp_path):
+        prefix = _prefix_for(tmp_path)
+        self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
+        self._make_fm_task(tmp_path, f"{prefix}002", "beta")
+        result = fix(tmp_path, migrate=True)
+        assert "stripped frontmatter" in result.summary().lower()
+
+
+class TestCliFixMigrate:
+    """CLI flag wiring for the migration flow."""
+
+    def _make_fm_task(self, tasks_dir, task_id, slug):
+        filename = f"{task_id}-p2-ready--{slug}.md"
+        path = tasks_dir / filename
+        path.write_text(
+            "---\ncreated: 2026-01-01\npriority: p2\nstatus: ready\n"
+            "artifact: x\n---\n\n# " + slug + "\n\nbody\n"
+        )
+        return path
+
+    def test_default_human_lists_pending_files(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        prefix = _prefix_for(tmp_path)
+        self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
+        with pytest.raises(SystemExit) as exc:
+            main(["fix", str(tmp_path)])
+        assert exc.value.code == 1
+        out = capsys.readouterr().out
+        assert "legacy YAML frontmatter" in out
+        assert "alpha" in out
+        assert "--migrate" in out
+        assert "--no-migrate" in out
+
+    def test_default_json_includes_pending_data(self, tmp_path, capsys, monkeypatch):
+        import json
+        from taskmd.cli import main
+        monkeypatch.setenv("FORCE_AGENT_MODE", "1")
+        prefix = _prefix_for(tmp_path)
+        self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
+        with pytest.raises(SystemExit) as exc:
+            main(["fix", str(tmp_path)])
+        assert exc.value.code == 1
+        obj = json.loads(capsys.readouterr().out)
+        assert obj["status"] == "error"
+        # Currently the envelope doesn't expose frontmatter_pending; the
+        # suggestions point at --migrate / --no-migrate.
+        suggestions = obj.get("suggestions", [])
+        assert any("--migrate" in s for s in suggestions)
+        assert any("--no-migrate" in s for s in suggestions)
+
+    def test_migrate_flag_strips_frontmatter(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        prefix = _prefix_for(tmp_path)
+        path = self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
+        main(["fix", "--migrate", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "stripped frontmatter" in out
+        assert not path.read_text().startswith("---")
+
+    def test_no_migrate_flag_skips_check(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        prefix = _prefix_for(tmp_path)
+        path = self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
+        main(["fix", "--no-migrate", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "All files already correct" in out or "✓" in out
+        # Frontmatter still present
+        assert path.read_text().startswith("---")
+
+
 class TestValidateMentionsFix:
     """Validate's duplicate-ID error points callers at `taskmd fix`."""
 

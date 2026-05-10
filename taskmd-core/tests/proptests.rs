@@ -9,7 +9,7 @@ use tempfile::TempDir;
 
 use taskmd_core::constants::{VALID_PRIORITIES, VALID_STATUSES};
 use taskmd_core::filename::{derive_slug, format_filename, parse_filename, MAX_SLUG_LEN};
-use taskmd_core::fix::{fix, fix_summary};
+use taskmd_core::fix::{fix, fix_summary, MigrateMode};
 use taskmd_core::ids::next_id;
 use taskmd_core::tasks::{parse_task_file, task_files};
 use taskmd_core::validate::validate;
@@ -169,8 +169,8 @@ proptest! {
             })
     ) {
         let (tmp, _) = make_task_dir(&params);
-        fix(tmp.path());
-        let result2 = fix(tmp.path());
+        fix(tmp.path(), MigrateMode::Skip);
+        let result2 = fix(tmp.path(), MigrateMode::Skip);
         prop_assert_eq!(result2.renamed, 0);
         prop_assert!(result2.ok());
     }
@@ -188,7 +188,7 @@ proptest! {
             })
     ) {
         let (tmp, _) = make_task_dir(&params);
-        let fix_result = fix(tmp.path());
+        let fix_result = fix(tmp.path(), MigrateMode::Skip);
         if fix_result.ok() {
             let val_result = validate(tmp.path());
             prop_assert!(
@@ -212,7 +212,7 @@ proptest! {
     ) {
         let (tmp, _) = make_task_dir(&params);
         let before = task_files(tmp.path()).unwrap().len();
-        fix(tmp.path());
+        fix(tmp.path(), MigrateMode::Skip);
         let after = task_files(tmp.path()).unwrap().len();
         prop_assert_eq!(before, after);
     }
@@ -252,7 +252,7 @@ proptest! {
         prop_assert!(val.ok(), "unexpected errors: {:?}", val.errors);
         prop_assert_eq!(val.file_count, 1);
 
-        let fix_result = fix(tmp.path());
+        let fix_result = fix(tmp.path(), MigrateMode::Skip);
         prop_assert!(fix_result.ok());
     }
 }
@@ -323,7 +323,7 @@ proptest! {
             .map(|t| t.id.clone())
             .collect();
 
-        fix(tmp.path());
+        fix(tmp.path(), MigrateMode::Skip);
 
         let ids_after: Vec<String> = task_files(tmp.path())
             .unwrap()
@@ -358,9 +358,9 @@ proptest! {
     ) {
         let (tmp, _) = make_task_dir(&params);
 
-        fix(tmp.path());
+        fix(tmp.path(), MigrateMode::Skip);
 
-        let r2 = fix(tmp.path());
+        let r2 = fix(tmp.path(), MigrateMode::Skip);
         prop_assert_eq!(r2.renamed, 0, "second fix renamed files");
         prop_assert_eq!(r2.migrated, 0, "second fix migrated files");
         prop_assert!(r2.ok(), "second fix had errors: {:?}", r2.errors);
@@ -373,14 +373,15 @@ proptest! {
         renamed in 0..10usize,
         migrated in 0..10usize,
         renumbered in 0..10usize,
+        stripped in 0..10usize,
     ) {
-        let summary = fix_summary(renamed, migrated, renumbered);
-        let all_zero = renamed == 0 && migrated == 0 && renumbered == 0;
+        let summary = fix_summary(renamed, migrated, renumbered, stripped);
+        let all_zero = renamed == 0 && migrated == 0 && renumbered == 0 && stripped == 0;
         prop_assert_eq!(
             summary == "All files already correct",
             all_zero,
-            "fix_summary({}, {}, {}) = {:?}",
-            renamed, migrated, renumbered, summary
+            "fix_summary({}, {}, {}, {}) = {:?}",
+            renamed, migrated, renumbered, stripped, summary
         );
     }
 }
@@ -397,7 +398,7 @@ proptest! {
             })
     ) {
         let (tmp, _) = make_task_dir(&params);
-        let result = fix(tmp.path());
+        let result = fix(tmp.path(), MigrateMode::Skip);
         prop_assert!(
             result.migrated <= result.renamed,
             "migrated ({}) > renamed ({})",

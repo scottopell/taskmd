@@ -80,6 +80,13 @@ class FixResult:
     renames: list[tuple[str, str]] = field(default_factory=list)
     # Each entry: (old_id, new_id, old_filename, new_filename).
     renumbered: list[tuple[str, str, str, str]] = field(default_factory=list)
+    # Filenames whose YAML frontmatter was stripped (only populated when
+    # `migrate=True` was passed). Empty otherwise.
+    frontmatter_stripped: list[str] = field(default_factory=list)
+    # Filenames detected as having frontmatter when `migrate=None` (the
+    # default "prompt" mode). When non-empty, `errors` will contain a single
+    # message pointing the user at --migrate / --no-migrate.
+    frontmatter_pending: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -87,7 +94,12 @@ class FixResult:
         return len(self.errors) == 0
 
     def summary(self) -> str:
-        return _fix_summary(self.renamed, self.migrated, len(self.renumbered))
+        return _fix_summary(
+            self.renamed,
+            self.migrated,
+            len(self.renumbered),
+            len(self.frontmatter_stripped),
+        )
 
 
 @dataclass
@@ -198,14 +210,29 @@ def validate(tasks_dir: Path | str = "tasks") -> ValidationResult:
     return ValidationResult(errors=d["errors"], file_count=d["file_count"])
 
 
-def fix(tasks_dir: Path | str = "tasks") -> FixResult:
-    """Auto-fix task files: migrate legacy IDs and renumber duplicate IDs."""
-    d = _fix(str(Path(tasks_dir)))
+def fix(
+    tasks_dir: Path | str = "tasks",
+    *,
+    migrate: bool | None = None,
+) -> FixResult:
+    """Auto-fix task files: optionally strip legacy frontmatter, migrate legacy
+    IDs, and renumber duplicate IDs.
+
+    ``migrate`` controls how legacy YAML frontmatter is handled:
+      - ``None`` (default): refuse to run if any file has frontmatter, returning
+        an error pointing the user at ``migrate=True`` or ``migrate=False``.
+      - ``True``: strip frontmatter from every file that has it. Destructive —
+        commit before running.
+      - ``False``: skip the frontmatter check entirely.
+    """
+    d = _fix(str(Path(tasks_dir)), migrate)
     return FixResult(
         renamed=d["renamed"],
         migrated=d["migrated"],
         renames=[tuple(r) for r in d["renames"]],
         renumbered=[tuple(r) for r in d["renumbered"]],
+        frontmatter_stripped=list(d["frontmatter_stripped"]),
+        frontmatter_pending=list(d["frontmatter_pending"]),
         errors=d["errors"],
     )
 
