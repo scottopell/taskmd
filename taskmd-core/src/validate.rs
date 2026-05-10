@@ -50,7 +50,9 @@ pub fn validate(tasks_dir: &Path) -> ValidationResult {
             }
             None => {
                 result.errors.push(format!(
-                    "{name}: filename doesn't match pattern DDNNN-pX-status--slug.md"
+                    "{name}: filename doesn't match pattern \
+                     (expected DDNNN-pX-status--slug.md; legacy NNNN and \
+                     AANNN ID formats are also accepted)"
                 ));
             }
         }
