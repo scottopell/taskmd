@@ -14,9 +14,11 @@ anchor).
 # 1. Pick the version. See "Versioning" below.
 NEW=0.2.0
 
-# 2. Bump pyproject.toml. Cargo manifests are NOT bumped — the two Rust
-#    crates are internal and never published to crates.io.
+# 2. Bump pyproject.toml AND both Cargo manifests in lockstep.
 sed -i '' "s/^version = \".*\"/version = \"$NEW\"/" pyproject.toml
+sed -i '' "s/^version = \".*\"/version = \"$(echo $NEW | sed 's/rc/-rc/')\"/" \
+    taskmd-core/Cargo.toml taskmd-py/Cargo.toml
+cargo update -p taskmd-core -p taskmd-py
 
 # 3. Commit directly to main.
 git add pyproject.toml
