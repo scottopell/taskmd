@@ -227,16 +227,24 @@ pub fn fix(tasks_dir: &Path, migrate_mode: MigrateMode) -> FixResult {
         MigrateMode::Skip => {}
         MigrateMode::Prompt => {
             for path in &files {
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned();
                 let content = match std::fs::read_to_string(path) {
                     Ok(c) => c,
-                    Err(_) => continue,
+                    Err(e) => {
+                        // Don't silently skip — the prompt-mode guarantee is
+                        // "no file slips past with frontmatter still in it",
+                        // so an unreadable file must surface as an error.
+                        result.errors.push(format!(
+                            "{name}: cannot read for frontmatter check: {e}"
+                        ));
+                        continue;
+                    }
                 };
                 if has_frontmatter(&content) {
-                    let name = path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .into_owned();
                     result.frontmatter_pending.push(name);
                 }
             }
@@ -247,6 +255,11 @@ pub fn fix(tasks_dir: &Path, migrate_mode: MigrateMode) -> FixResult {
                      removed. Run 'taskmd fix --migrate' to strip it (destructive; \
                      commit first), or 'taskmd fix --no-migrate' to skip the check"
                 ));
+                return result;
+            }
+            // If any file was unreadable, bail before doing further work —
+            // the user needs to resolve the IO error first.
+            if !result.errors.is_empty() {
                 return result;
             }
         }

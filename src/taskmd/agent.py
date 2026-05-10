@@ -66,6 +66,7 @@ def error_envelope(
     command: str,
     errors: list[str],
     suggestions: list[str] | None = None,
+    data: Any = None,
 ) -> str:
     obj: dict[str, Any] = {
         "status": "error",
@@ -74,6 +75,8 @@ def error_envelope(
     }
     if suggestions:
         obj["suggestions"] = suggestions
+    if data is not None:
+        obj["data"] = data
     return json.dumps(obj, separators=(",", ":"), default=str, sort_keys=True)
 
 

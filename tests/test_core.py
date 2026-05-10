@@ -436,13 +436,18 @@ class TestCliFixMigrate:
         monkeypatch.setenv("FORCE_AGENT_MODE", "1")
         prefix = _prefix_for(tmp_path)
         self._make_fm_task(tmp_path, f"{prefix}001", "alpha")
+        self._make_fm_task(tmp_path, f"{prefix}002", "beta")
         with pytest.raises(SystemExit) as exc:
             main(["fix", str(tmp_path)])
         assert exc.value.code == 1
         obj = json.loads(capsys.readouterr().out)
         assert obj["status"] == "error"
-        # Currently the envelope doesn't expose frontmatter_pending; the
-        # suggestions point at --migrate / --no-migrate.
+        # The error envelope must surface the pending list so agents can act.
+        assert "data" in obj
+        pending = obj["data"]["frontmatter_pending"]
+        assert len(pending) == 2
+        assert any("alpha" in name for name in pending)
+        assert any("beta" in name for name in pending)
         suggestions = obj.get("suggestions", [])
         assert any("--migrate" in s for s in suggestions)
         assert any("--no-migrate" in s for s in suggestions)

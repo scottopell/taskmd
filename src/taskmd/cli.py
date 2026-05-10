@@ -291,12 +291,12 @@ def main(argv: list[str] | None = None) -> None:
         result = fix(tasks_dir, migrate=opts["migrate"])
         if use_json:
             if result.errors:
-                # If the only error is the migration prompt, surface the
-                # pending file list as data so agents can act on it.
-                data: dict = {}
+                # If the migration prompt fired, surface the pending file
+                # list so agents can act on it.
+                data: dict | None = None
                 suggestions: list[str]
                 if result.frontmatter_pending:
-                    data["frontmatter_pending"] = list(result.frontmatter_pending)
+                    data = {"frontmatter_pending": list(result.frontmatter_pending)}
                     suggestions = [
                         "Run 'taskmd fix --migrate' to strip the frontmatter (destructive — commit first)",
                         "Run 'taskmd fix --no-migrate' to skip the check this run",
@@ -307,6 +307,7 @@ def main(argv: list[str] | None = None) -> None:
                     "fix",
                     result.errors,
                     suggestions=suggestions,
+                    data=data,
                 ))
                 sys.exit(1)
             else:
