@@ -13,6 +13,8 @@ from taskmd._core import (  # type: ignore[import]
     VALID_STATUSES as _VALID_STATUSES,
     ancillary_files_for as _ancillary_files_for,
     derive_slug,
+    discover_tasks_dir as _discover_tasks_dir,
+    discover_tasks_dir_or_default as _discover_tasks_dir_or_default,
     do_create as _create,
     do_ensure_initialized as _ensure_initialized,
     do_fix as _fix,
@@ -309,6 +311,35 @@ def ensure_initialized(tasks_dir: Path | str = "tasks") -> EnsureResult:
         created=d["created"],
         error=d["error"],
     )
+
+
+def discover_tasks_dir(start: Path | str = ".") -> tuple[Path | None, list[str]]:
+    """Scan ``start`` for a taskmd tasks directory (a ``task*``-prefixed subdir
+    holding ``_TEMPLATE.md``).
+
+    Returns ``(path, candidates)``:
+        - ``(Path, [name])`` when exactly one match is found (``path`` is
+          ``start / name``).
+        - ``(None, [])`` when no candidate is found.
+        - ``(None, [name1, name2, ...])`` sorted alphabetically when 2+ match;
+          the caller must disambiguate.
+    """
+    start_path = Path(start)
+    sole, candidates = _discover_tasks_dir(str(start_path))
+    found = start_path / sole if sole is not None else None
+    return found, list(candidates)
+
+
+def discover_tasks_dir_or_default(start: Path | str = ".") -> Path:
+    """Resolve a tasks directory under ``start``, never failing.
+
+    Prefers a candidate named exactly ``tasks``; otherwise the lexically-first
+    candidate; otherwise falls back to ``start / "tasks"`` even though nothing
+    exists there yet. Useful for editor integrations that want a usable path
+    without prompting.
+    """
+    start_path = Path(start)
+    return start_path / _discover_tasks_dir_or_default(str(start_path))
 
 
 def create_task(

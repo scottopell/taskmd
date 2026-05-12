@@ -5,6 +5,8 @@ from typing import Optional, TypedDict
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 FILENAME_PATTERN: str
+TEMPLATE_FILENAME: str
+DEFAULT_TASKS_DIR_NAME: str
 VALID_STATUSES: list[str]
 VALID_PRIORITIES: list[str]
 
@@ -79,6 +81,13 @@ class InitDict(TypedDict):
 
 def do_init(tasks_dir: str) -> InitDict: ...
 def do_ensure_initialized(tasks_dir: str) -> InitDict: ...
+
+# ── Discovery ─────────────────────────────────────────────────────────────────
+
+# (sole_match, candidates): sole_match is set iff exactly one candidate exists;
+# candidates is sorted and holds all task*-prefixed subdirs carrying _TEMPLATE.md.
+def discover_tasks_dir(dir: str) -> tuple[Optional[str], list[str]]: ...
+def discover_tasks_dir_or_default(dir: str) -> str: ...
 
 # ── Create ────────────────────────────────────────────────────────────────────
 

@@ -48,11 +48,12 @@ Modules — full docs at [docs.rs/taskmd-core](https://docs.rs/taskmd-core):
 
 | Module      | What it does                                                                  |
 |-------------|-------------------------------------------------------------------------------|
-| `constants` | `VALID_STATUSES`, `VALID_PRIORITIES`.                                          |
+| `constants` | `VALID_STATUSES`, `VALID_PRIORITIES`, `TEMPLATE_FILENAME`, `DEFAULT_TASKS_DIR_NAME`, `TASKS_DIR_PREFIX`. |
 | `filename`  | `parse_filename`, `format_filename`, `derive_slug`, `MAX_SLUG_LEN`.            |
 | `ids`       | `next_id`, `prefix_for`, `parse_id_parts`, legacy-ID detection.                |
 | `tasks`     | `TaskFile`, `list_tasks`, `find_task_by_id`, `find_task_by_slug`, `update_task`, `ancillary_files_for`. |
 | `create`    | `create_task` — atomic ID-allocate + write.                                    |
+| `discover`  | `candidates` / `discover` — find the `_TEMPLATE.md`-marked tasks dir under a directory. `discover_or_default` — never-fails policy (prefer `tasks`, else lexically-first, else fall back to `tasks`). |
 | `init`      | `init` — scaffold a fresh tasks directory. `ensure_initialized` — idempotent variant. |
 | `validate`  | `validate` — check filename conformance and ID uniqueness.                     |
 | `fix`       | `fix` — auto-rename non-conforming files, renumber duplicates, plus a one-shot legacy-format migration (slated for removal in 1.1). |

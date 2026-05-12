@@ -1,3 +1,14 @@
+/// Marker file that identifies a directory as a taskmd tasks directory.
+pub const TEMPLATE_FILENAME: &str = "_TEMPLATE.md";
+
+/// Conventional tasks-directory name — the default, and the tie-breaker when
+/// `discover` finds more than one candidate.
+pub const DEFAULT_TASKS_DIR_NAME: &str = "tasks";
+
+/// Discovery only considers immediate subdirectories whose name starts with
+/// this prefix (so `tasks/`, `task-archive/`, … but not unrelated dirs).
+pub const TASKS_DIR_PREFIX: &str = "task";
+
 /// Valid task statuses — alphabetical order matches Python's `sorted(VALID_STATUSES)`.
 pub const VALID_STATUSES: &[&str] =
     &["blocked", "brainstorming", "done", "in-progress", "ready", "wont-do"];
