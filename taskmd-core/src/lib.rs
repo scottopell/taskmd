@@ -6,7 +6,7 @@
 //!   - Slug derivation
 //!   - Task file listing, searching, and renaming
 //!   - Corpus validation and auto-fix
-//!   - Tasks directory initialisation
+//!   - Tasks directory discovery (`_TEMPLATE.md` marker scan) and initialisation
 //!
 //! The filename is the sole source of truth for task metadata (id, priority,
 //! status, slug). Bodies are free-form markdown.
@@ -23,6 +23,7 @@
 
 pub mod constants;
 pub mod create;
+pub mod discover;
 pub mod error;
 pub mod filename;
 pub mod fix;

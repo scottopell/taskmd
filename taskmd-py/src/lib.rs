@@ -8,7 +8,7 @@ use pyo3::types::PyDict;
 use std::path::Path;
 use std::str::FromStr;
 use taskmd_core::constants::{Priority, Status};
-use taskmd_core::{constants, create, filename, fix, ids, init, tasks, validate as vld};
+use taskmd_core::{constants, create, discover, filename, fix, ids, init, tasks, validate as vld};
 
 // ── Task dict helper ──────────────────────────────────────────────────────────
 
@@ -242,6 +242,38 @@ fn do_ensure_initialized(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>>
     Ok(dict.into_any().unbind())
 }
 
+// ── Discovery ─────────────────────────────────────────────────────────────────
+
+/// Scan `dir` for a taskmd tasks directory (a subdir holding `_TEMPLATE.md`).
+///
+/// Returns `(name, candidates)`:
+///   - `(Some(name), [name])` — exactly one match.
+///   - `(None, [])` — no match.
+///   - `(None, [n1, n2, ...])` — 2+ matches, names sorted; caller disambiguates.
+///
+/// Names are relative (a single path component); the absolute path is
+/// `os.path.join(dir, name)`.
+#[pyfunction]
+fn discover_tasks_dir(dir: &str) -> (Option<String>, Vec<String>) {
+    // Map the canonical `Discovery` classification rather than re-deriving
+    // sole-vs-many here, so the policy lives in exactly one place.
+    match discover::discover(Path::new(dir)) {
+        discover::Discovery::Found(name) => (Some(name.clone()), vec![name]),
+        discover::Discovery::NotFound => (None, vec![]),
+        discover::Discovery::Ambiguous(candidates) => (None, candidates),
+    }
+}
+
+/// Never-fails variant: prefer the conventional `tasks` name, else the
+/// lexically-first candidate, else fall back to the bare name `tasks`.
+/// Always returns a relative name.
+#[pyfunction]
+fn discover_tasks_dir_or_default(dir: &str) -> String {
+    discover::discover_or_default(Path::new(dir))
+        .to_string_lossy()
+        .into_owned()
+}
+
 // ── Module ────────────────────────────────────────────────────────────────────
 
 #[pymodule]
@@ -269,8 +301,12 @@ fn _core(m: &pyo3::Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(do_init, m)?)?;
     m.add_function(wrap_pyfunction!(do_ensure_initialized, m)?)?;
     m.add_function(wrap_pyfunction!(do_create, m)?)?;
+    m.add_function(wrap_pyfunction!(discover_tasks_dir, m)?)?;
+    m.add_function(wrap_pyfunction!(discover_tasks_dir_or_default, m)?)?;
 
     m.add("FILENAME_PATTERN", filename::FILENAME_PATTERN.as_str())?;
+    m.add("TEMPLATE_FILENAME", constants::TEMPLATE_FILENAME)?;
+    m.add("DEFAULT_TASKS_DIR_NAME", constants::DEFAULT_TASKS_DIR_NAME)?;
     m.add("VALID_STATUSES", constants::VALID_STATUSES.to_vec())?;
     m.add("VALID_PRIORITIES", constants::VALID_PRIORITIES.to_vec())?;
 

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::constants::{Priority, Status};
+use crate::constants::{Priority, Status, TEMPLATE_FILENAME};
 use crate::error::Error;
 use crate::filename::{derive_slug, format_filename, parse_filename};
 
@@ -28,7 +28,7 @@ impl TaskFile {
 }
 
 pub fn is_template(path: &Path) -> bool {
-    path.file_name().map_or(false, |n| n == "_TEMPLATE.md")
+    path.file_name().map_or(false, |n| n == TEMPLATE_FILENAME)
 }
 
 /// Ancillary files have a second dot in the stem, e.g. `0042-p2-ready--foo.qaplan.md`.

@@ -7,6 +7,30 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and this project follows [SemVer](https://semver.org/) calibrated by user impact
 (see `OPERATIONS.md` for the calibration rules).
 
+## [Unreleased]
+
+### Added — Rust core (`taskmd-core`)
+
+- `discover` module: `candidates(dir) -> Vec<String>` and
+  `discover(dir) -> Discovery { Found, NotFound, Ambiguous }` locate the
+  `_TEMPLATE.md`-marked tasks directory under a directory (the same scan the
+  Python CLI does for auto-detect, now a reusable Rust API).
+  `discover_or_default(dir) -> PathBuf` applies a never-fails policy: prefer a
+  candidate named exactly `tasks`, else the lexically-first candidate, else
+  fall back to the bare name `tasks`.
+- `constants`: `TEMPLATE_FILENAME` (`"_TEMPLATE.md"`), `DEFAULT_TASKS_DIR_NAME`
+  (`"tasks"`), `TASKS_DIR_PREFIX` (`"task"`) — the literals discovery and
+  `init` were each hard-coding.
+
+### Added — Python (`taskmd`)
+
+- `taskmd.core.discover_tasks_dir(start=".") -> (Path | None, list[str])` and
+  `taskmd.core.discover_tasks_dir_or_default(start=".") -> Path`, wrapping the
+  Rust `discover` module. The CLI's marker auto-detect now delegates to it
+  instead of carrying its own `os.scandir` walk.
+- `taskmd._core` exposes `discover_tasks_dir`, `discover_tasks_dir_or_default`,
+  and the `TEMPLATE_FILENAME` / `DEFAULT_TASKS_DIR_NAME` constants.
+
 ## [1.0.0] — 2026-05-10
 
 The 1.0 line is the first stable API. Everything below was bundled across

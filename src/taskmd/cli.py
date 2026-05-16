@@ -12,7 +12,6 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import sys
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -27,6 +26,7 @@ from taskmd.core import (
     VALID_PRIORITIES,
     VALID_STATUSES,
     create_task,
+    discover_tasks_dir,
     find_task_by_id,
     fix,
     init,
@@ -38,7 +38,6 @@ from taskmd.core import (
 
 _DEFAULT_DIRS = ("tasks", "taskmds")
 _DEFAULT_INIT_DIR = _DEFAULT_DIRS[0]  # "tasks"
-_TEMPLATE_FILE = "_TEMPLATE.md"
 
 _HELP_TEXT = """\
 Usage: taskmd [--agent] [--output json|text] [--tasks-dir P] <command> [options] [tasks_dir]
@@ -192,8 +191,8 @@ Examples:
 
 
 def _autodetect_tasks_dir() -> tuple[Path | None, list[str]]:
-    """Scan cwd for direct subdirs whose name starts with 'task' and contain
-    a _TEMPLATE.md marker file.
+    """Scan cwd for a taskmd tasks directory via the canonical taskmd-core
+    discovery (a ``task*``-prefixed subdir holding ``_TEMPLATE.md``).
 
     Returns:
         (path, candidates):
@@ -201,24 +200,7 @@ def _autodetect_tasks_dir() -> tuple[Path | None, list[str]]:
             - (None, []) when no candidates are found.
             - (None, [name1, name2, ...]) sorted alphabetically when 2+ are found.
     """
-    cwd = Path.cwd()
-    matches: list[str] = []
-    try:
-        for entry in os.scandir(cwd):
-            if not entry.is_dir():
-                continue
-            name = entry.name
-            if not name.startswith("task"):
-                continue
-            if (Path(entry.path) / _TEMPLATE_FILE).is_file():
-                matches.append(name)
-    except OSError:
-        return None, []
-
-    matches.sort()
-    if len(matches) == 1:
-        return cwd / matches[0], matches
-    return None, matches
+    return discover_tasks_dir(Path.cwd())
 
 
 def _parse_args(argv: list[str]) -> dict:

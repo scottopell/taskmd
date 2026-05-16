@@ -16,6 +16,8 @@ from taskmd.core import (
     _prefix_for,
     ancillary_files_for,
     create_task,
+    discover_tasks_dir,
+    discover_tasks_dir_or_default,
     ensure_initialized,
     find_task_by_slug,
     fix,
@@ -1396,3 +1398,59 @@ class TestPackageExports:
         assert callable(ancillary_files_for)
         assert callable(ensure_initialized)
         assert EnsureResult.__name__ == "EnsureResult"
+
+
+class TestDiscoverTasksDir:
+    """`core.discover_tasks_dir` / `discover_tasks_dir_or_default` — the
+    library-level discovery exposed for downstream Rust/Python consumers."""
+
+    def _mark(self, parent: Path, name: str) -> Path:
+        d = parent / name
+        d.mkdir()
+        make_template(d)
+        return d
+
+    def test_single_match(self, tmp_path):
+        tasks = self._mark(tmp_path, "tasks")
+        found, candidates = discover_tasks_dir(tmp_path)
+        assert found == tasks
+        assert candidates == ["tasks"]
+
+    def test_alternate_name_match(self, tmp_path):
+        d = self._mark(tmp_path, "taskmds")
+        found, candidates = discover_tasks_dir(tmp_path)
+        assert found == d
+        assert candidates == ["taskmds"]
+
+    def test_no_match(self, tmp_path):
+        (tmp_path / "tasks").mkdir()  # task-prefixed but no _TEMPLATE.md
+        (tmp_path / "src").mkdir()
+        found, candidates = discover_tasks_dir(tmp_path)
+        assert found is None
+        assert candidates == []
+
+    def test_ambiguous_returns_sorted_candidates(self, tmp_path):
+        self._mark(tmp_path, "tasks-archive")
+        self._mark(tmp_path, "tasks")
+        found, candidates = discover_tasks_dir(tmp_path)
+        assert found is None
+        assert candidates == ["tasks", "tasks-archive"]
+
+    def test_non_task_prefix_ignored(self, tmp_path):
+        self._mark(tmp_path, "todo")  # marked but wrong prefix
+        found, candidates = discover_tasks_dir(tmp_path)
+        assert found is None
+        assert candidates == []
+
+    def test_or_default_prefers_conventional_name(self, tmp_path):
+        self._mark(tmp_path, "tasks-archive")
+        self._mark(tmp_path, "tasks")
+        assert discover_tasks_dir_or_default(tmp_path) == tmp_path / "tasks"
+
+    def test_or_default_picks_lexically_first(self, tmp_path):
+        self._mark(tmp_path, "task-z")
+        self._mark(tmp_path, "task-a")
+        assert discover_tasks_dir_or_default(tmp_path) == tmp_path / "task-a"
+
+    def test_or_default_falls_back_to_tasks(self, tmp_path):
+        assert discover_tasks_dir_or_default(tmp_path) == tmp_path / "tasks"

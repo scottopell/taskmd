@@ -1,3 +1,4 @@
+use crate::constants::TEMPLATE_FILENAME;
 use std::path::{Path, PathBuf};
 
 const TEMPLATE_CONTENT: &str = "\
@@ -60,7 +61,7 @@ pub fn init(tasks_dir: &Path) -> InitResult {
 
     result.created.push(format!("{}/", tasks_dir.display()));
 
-    let template_path = tasks_dir.join("_TEMPLATE.md");
+    let template_path = tasks_dir.join(TEMPLATE_FILENAME);
     if let Err(e) = std::fs::write(&template_path, TEMPLATE_CONTENT) {
         result.error = Some(format!("cannot write template: {e}"));
         return result;
@@ -101,7 +102,7 @@ pub fn ensure_initialized(tasks_dir: &Path) -> EnsureResult {
         result.created.push(format!("{}/", tasks_dir.display()));
     }
 
-    let template_path = tasks_dir.join("_TEMPLATE.md");
+    let template_path = tasks_dir.join(TEMPLATE_FILENAME);
     if !template_path.exists() {
         if let Err(e) = std::fs::write(&template_path, TEMPLATE_CONTENT) {
             result.error = Some(format!("cannot write template: {e}"));
