@@ -255,13 +255,13 @@ fn do_ensure_initialized(py: Python<'_>, tasks_dir: &str) -> PyResult<Py<PyAny>>
 /// `os.path.join(dir, name)`.
 #[pyfunction]
 fn discover_tasks_dir(dir: &str) -> (Option<String>, Vec<String>) {
-    let found = discover::candidates(Path::new(dir));
-    let one = if found.len() == 1 {
-        Some(found[0].clone())
-    } else {
-        None
-    };
-    (one, found)
+    // Map the canonical `Discovery` classification rather than re-deriving
+    // sole-vs-many here, so the policy lives in exactly one place.
+    match discover::discover(Path::new(dir)) {
+        discover::Discovery::Found(name) => (Some(name.clone()), vec![name]),
+        discover::Discovery::NotFound => (None, vec![]),
+        discover::Discovery::Ambiguous(candidates) => (None, candidates),
+    }
 }
 
 /// Never-fails variant: prefer the conventional `tasks` name, else the

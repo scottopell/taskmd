@@ -56,9 +56,13 @@ pub fn candidates(dir: &Path) -> Vec<String> {
         if !name.starts_with(TASKS_DIR_PREFIX) {
             continue;
         }
-        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            continue;
-        }
+        // `<entry>/_TEMPLATE.md` resolving to a file is the only signal that
+        // matters: it implies `<entry>` is a traversable directory. Both
+        // `join` and `is_file` follow symlinks, so a symlink pointing at a
+        // real marked tasks dir still matches — preserving the prior Python
+        // CLI behaviour (`os.scandir(...).is_dir()` followed symlinks; an
+        // explicit `file_type().is_dir()` check here would NOT, silently
+        // regressing symlinked tasks dirs).
         if entry.path().join(TEMPLATE_FILENAME).is_file() {
             matches.push(name);
         }
@@ -169,6 +173,21 @@ mod tests {
     fn or_default_falls_back_to_tasks_when_nothing_matches() {
         let tmp = TempDir::new().unwrap();
         assert_eq!(discover_or_default(tmp.path()), PathBuf::from("tasks"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_to_marked_dir_is_followed() {
+        // Parity with the old Python CLI (`os.scandir().is_dir()` followed
+        // symlinks). A `task*`-named symlink pointing at a real marked dir
+        // must be discovered.
+        let tmp = TempDir::new().unwrap();
+        let real = tmp.path().join("real-store");
+        std::fs::create_dir(&real).unwrap();
+        std::fs::write(real.join(TEMPLATE_FILENAME), "# Task Title\n").unwrap();
+        std::os::unix::fs::symlink(&real, tmp.path().join("tasks")).unwrap();
+
+        assert_eq!(discover(tmp.path()), Discovery::Found("tasks".to_string()));
     }
 
     #[test]
