@@ -9,6 +9,8 @@ and this project follows [SemVer](https://semver.org/) calibrated by user impact
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-05-15
+
 ### Added — Rust core (`taskmd-core`)
 
 - `discover` module: `candidates(dir) -> Vec<String>` and
