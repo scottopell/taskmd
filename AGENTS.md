@@ -34,14 +34,14 @@ This project uses itself for task management.
 
 **Format:** `DDNNN-pX-status--slug.md` (e.g., `34042-p1-ready--fix-bug.md`)
 
-- `DD`: 2-digit prefix (D1 from hostname, D2 from directory path)
+- `DD`: 2-digit prefix from `hash(machine_identity, directory_path) mod 100`
 - `NNN`: 3-digit sequence number
 - `pX`: Priority (p0 highest)
 - `status`: ready, in-progress, blocked, done, wont-do, brainstorming
 
 The filename is the only source of truth. Task bodies are free-form markdown.
 
-Set `TASKMD_MACHINE_ID=0` to pin D1 on your primary machine.
+Set `TASKMD_MACHINE_ID` to override the machine-identity input (any string; replaces hostname in the hash). Useful in ephemeral containers with constant hostnames.
 
 **To change status:** `taskmd status <id> <new-status>` renames the file in one
 atomic step.
