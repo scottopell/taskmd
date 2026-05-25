@@ -4,19 +4,6 @@ use std::path::Path;
 /// Maximum sequence number that fits in the 3-digit NNN suffix.
 const MAX_SEQ: u32 = 999;
 
-/// Compute D1 (machine digit) from an explicit override or hostname hash.
-fn machine_digit(machine_id_override: Option<&str>) -> usize {
-    if let Some(val) = machine_id_override {
-        if val.len() == 1 && val.as_bytes()[0].is_ascii_digit() {
-            return (val.as_bytes()[0] - b'0') as usize;
-        }
-    }
-    let hostname = gethostname::gethostname();
-    let hostname_str = hostname.to_string_lossy();
-    let h = Sha256::digest(hostname_str.as_bytes());
-    h[0] as usize % 10
-}
-
 /// Resolve a path to its canonical form, even if it doesn't exist yet.
 ///
 /// Tries `canonicalize()` first (resolves symlinks, requires path to exist).
@@ -50,27 +37,43 @@ fn resolve_path(path: &Path) -> std::path::PathBuf {
     }
 }
 
-/// Compute D2 (directory digit) from the tasks directory path.
-fn dir_digit(tasks_dir: &Path) -> usize {
+/// Hash machine identity and tasks directory path together into a value 0-99.
+///
+/// Machine identity is `TASKMD_MACHINE_ID` if set, else the hostname. Path is
+/// the canonical (symlink-resolved) tasks directory. The two inputs are
+/// separated by a NUL byte so distinct (machine, path) pairs can't collide
+/// through concatenation ambiguity.
+fn prefix_digits(machine_id_override: Option<&str>, tasks_dir: &Path) -> usize {
+    let mut hasher = Sha256::new();
+    match machine_id_override {
+        Some(val) => hasher.update(val.as_bytes()),
+        None => {
+            let hostname = gethostname::gethostname();
+            hasher.update(hostname.to_string_lossy().as_bytes());
+        }
+    }
+    hasher.update(b"\0");
     let resolved = resolve_path(tasks_dir);
-    let path_str = resolved.to_string_lossy();
-    let h = Sha256::digest(path_str.as_bytes());
-    h[0] as usize % 10
+    hasher.update(resolved.to_string_lossy().as_bytes());
+    let h = hasher.finalize();
+    let v = ((h[0] as u16) << 8 | h[1] as u16) as usize;
+    v % 100
 }
 
 /// Derive a deterministic 2-digit numeric prefix for a tasks directory.
 ///
-/// - D1: `TASKMD_MACHINE_ID` env var (single digit 0-9) if set, else
-///   `sha256(hostname) mod 10`.
-/// - D2: `sha256(resolved_path) mod 10`.
-///
-/// Different machines produce different D1; different worktrees on the same
-/// machine produce different D2. Together they partition the ID space so
-/// concurrent `taskmd next` across machines/worktrees won't collide.
+/// Hashes `(machine_identity, canonical_path)` together and takes the result
+/// modulo 100. Machine identity is `TASKMD_MACHINE_ID` if set, otherwise the
+/// hostname. Different worktrees on the same machine and different machines
+/// both produce different prefixes, partitioning the ID space so concurrent
+/// `taskmd next` calls rarely collide. With 100 buckets, the birthday-50%
+/// point is ~12 concurrent worktrees.
 pub fn prefix_for(tasks_dir: &Path) -> String {
-    let d1 = machine_digit(std::env::var("TASKMD_MACHINE_ID").ok().as_deref());
-    let d2 = dir_digit(tasks_dir);
-    format!("{d1}{d2}")
+    let v = prefix_digits(
+        std::env::var("TASKMD_MACHINE_ID").ok().as_deref(),
+        tasks_dir,
+    );
+    format!("{v:02}")
 }
 
 /// True if the task ID uses the legacy 4-digit numeric format (e.g. "0042").
@@ -137,13 +140,17 @@ fn used_sequences(tasks_dir: &Path, prefix: &str) -> std::collections::HashSet<u
 /// Return the next available task ID for this tasks directory.
 ///
 /// Only considers tasks whose prefix matches the local prefix when
-/// computing the next sequence number. If the local prefix overflows
-/// (seq > 999), D2 is bumped and sequences in the new prefix space are
-/// checked to avoid collisions.
+/// computing the next sequence number. If the local prefix is full
+/// (seq > 999), the prefix is bumped by 1 (mod 100) and successive
+/// prefix buckets are scanned until one with a free sequence is found.
+///
+/// # Panics
+///
+/// If every one of the 100 prefix buckets is exhausted (i.e. the tasks
+/// directory holds 99 900 tasks). This is a six-figure scale event and
+/// has not been observed in practice.
 pub fn next_id(tasks_dir: &Path) -> String {
-    let d1 = machine_digit(std::env::var("TASKMD_MACHINE_ID").ok().as_deref());
-    let d2 = dir_digit(tasks_dir);
-    let prefix = format!("{d1}{d2}");
+    let prefix = prefix_for(tasks_dir);
 
     if !tasks_dir.exists() {
         return format!("{prefix}001");
@@ -151,21 +158,22 @@ pub fn next_id(tasks_dir: &Path) -> String {
 
     let local_seqs = used_sequences(tasks_dir, &prefix);
     let max_seq = local_seqs.iter().copied().max().unwrap_or(0);
-
     let next = max_seq + 1;
-    if next > MAX_SEQ {
-        // Overflow: bump D2 and find the first unused sequence in the new space.
-        let d2_next = (d2 + 1) % 10;
-        let overflow_prefix = format!("{d1}{d2_next}");
-        let overflow_seqs = used_sequences(tasks_dir, &overflow_prefix);
-        let mut seq = 1u32;
-        while overflow_seqs.contains(&seq) && seq <= MAX_SEQ {
-            seq += 1;
-        }
-        format!("{overflow_prefix}{seq:03}")
-    } else {
-        format!("{prefix}{next:03}")
+    if next <= MAX_SEQ {
+        return format!("{prefix}{next:03}");
     }
+
+    let prefix_num: u32 = prefix.parse().expect("prefix_for returns 2-digit numeric");
+    for offset in 1..100 {
+        let candidate_prefix = format!("{:02}", (prefix_num + offset) % 100);
+        let seqs = used_sequences(tasks_dir, &candidate_prefix);
+        for seq in 1..=MAX_SEQ {
+            if !seqs.contains(&seq) {
+                return format!("{candidate_prefix}{seq:03}");
+            }
+        }
+    }
+    panic!("all 100 prefix buckets exhausted (each holds 999 tasks); tasks directory holds ~99 900 entries");
 }
 
 #[cfg(test)]
@@ -237,44 +245,79 @@ mod tests {
     }
 
     #[test]
-    fn machine_digit_override() {
-        assert_eq!(machine_digit(Some("7")), 7);
-        assert_eq!(machine_digit(Some("0")), 0);
-    }
-
-    #[test]
-    fn machine_digit_invalid_override_falls_back() {
-        // Invalid values fall back to hostname hash -- just verify they don't panic
-        let d1 = machine_digit(Some("ab"));
-        assert!(d1 < 10);
-        let d2 = machine_digit(Some(""));
-        assert!(d2 < 10);
-        let d3 = machine_digit(None);
-        assert!(d3 < 10);
-        // Invalid and None should both produce hostname hash
-        assert_eq!(d1, d3);
-        assert_eq!(d2, d3);
-    }
-
-    #[test]
-    fn dir_digit_deterministic() {
+    fn prefix_digits_override_changes_result() {
         let tmp = tempfile::tempdir().unwrap();
-        assert_eq!(dir_digit(tmp.path()), dir_digit(tmp.path()));
+        let base = prefix_digits(None, tmp.path());
+        // Different machine identities should usually produce different prefixes.
+        // We test that the override actually feeds the hash: at least one of
+        // several candidates differs from the hostname-derived prefix.
+        let mut any_different = false;
+        for candidate in ["alpha", "beta", "gamma", "delta", "epsilon"] {
+            if prefix_digits(Some(candidate), tmp.path()) != base {
+                any_different = true;
+                break;
+            }
+        }
+        assert!(
+            any_different,
+            "machine_id_override should influence the hash"
+        );
     }
 
     #[test]
-    fn dir_digit_nonexistent_path_is_stable() {
-        // Even for a path that doesn't exist, dir_digit should produce a
-        // consistent result based on the absolute path resolution.
+    fn prefix_digits_changes_with_path() {
+        // The original collision bug: identical machine identity + identical
+        // path produced identical prefixes. Verify that varying *only* the path
+        // (machine identity fixed) produces a different prefix for at least
+        // one candidate pair. Try several siblings to absorb the 1-in-100
+        // chance any individual pair happens to collide.
         let tmp = tempfile::tempdir().unwrap();
-        let nonexistent = tmp.path().join("tasks");
-        let d1 = dir_digit(&nonexistent);
-        let d2 = dir_digit(&nonexistent);
-        assert_eq!(d1, d2);
-        // After creating the dir, the digit should remain the same
-        std::fs::create_dir(&nonexistent).unwrap();
-        let d3 = dir_digit(&nonexistent);
-        assert_eq!(d1, d3);
+        let base = tmp.path().join("base");
+        std::fs::create_dir(&base).unwrap();
+        let base_prefix = prefix_digits(Some("m"), &base);
+
+        let mut any_different = false;
+        for name in ["a", "b", "c", "d", "e", "f", "g", "h"] {
+            let other = tmp.path().join(name);
+            std::fs::create_dir(&other).unwrap();
+            if prefix_digits(Some("m"), &other) != base_prefix {
+                any_different = true;
+                break;
+            }
+        }
+        assert!(
+            any_different,
+            "path input should influence the hash — varying path with fixed \
+             machine identity should produce different prefixes"
+        );
+    }
+
+    #[test]
+    fn prefix_digits_same_path_different_machines_differ() {
+        // Cross-machine case: identical path, different machine identities
+        // should produce different prefixes. This is the multi-host scenario
+        // the prefix is meant to disambiguate.
+        let tmp = tempfile::tempdir().unwrap();
+        let base = prefix_digits(Some("host-a"), tmp.path());
+        let mut any_different = false;
+        for candidate in ["host-b", "host-c", "host-d", "host-e", "host-f"] {
+            if prefix_digits(Some(candidate), tmp.path()) != base {
+                any_different = true;
+                break;
+            }
+        }
+        assert!(
+            any_different,
+            "machine identity should influence the hash — varying machine \
+             with fixed path should produce different prefixes"
+        );
+    }
+
+    #[test]
+    fn prefix_digits_in_range() {
+        let tmp = tempfile::tempdir().unwrap();
+        let v = prefix_digits(None, tmp.path());
+        assert!(v < 100);
     }
 
     #[test]
@@ -288,33 +331,18 @@ mod tests {
     }
 
     #[test]
-    fn next_id_overflow_bumps_d2() {
-        // Simulate: if max_seq were 999, next_id should overflow to next D2 bucket
-        // We test the overflow logic directly since creating 999 files is slow.
-        let d1 = 3_usize;
-        let d2 = 4_usize;
-        let max_seq = 999_u32;
-        let next = max_seq + 1;
-
-        let id = if next > MAX_SEQ {
-            let d2_next = (d2 + 1) % 10;
-            format!("{d1}{d2_next}001")
-        } else {
-            format!("{d1}{d2}{next:03}")
-        };
-
-        assert_eq!(id, "35001");
-        assert_eq!(id.len(), 5);
+    fn next_id_overflow_bumps_prefix() {
+        // When local bucket fills (seq > 999), prefix increments by 1 (mod 100).
+        let prefix_num: u32 = 34;
+        let overflow = format!("{:02}", (prefix_num + 1) % 100);
+        assert_eq!(overflow, "35");
     }
 
     #[test]
-    fn next_id_overflow_d2_wraps() {
-        // D2=9 should wrap to D2=0
-        let d1 = 3_usize;
-        let d2 = 9_usize;
-        let d2_next = (d2 + 1) % 10;
-        let id = format!("{d1}{d2_next}001");
-        assert_eq!(id, "30001");
+    fn next_id_overflow_wraps_at_99() {
+        let prefix_num: u32 = 99;
+        let overflow = format!("{:02}", (prefix_num + 1) % 100);
+        assert_eq!(overflow, "00");
     }
 
     /// Helper: write a minimal task file with a given ID into a directory.
@@ -389,10 +417,8 @@ mod tests {
         // already has tasks. next_id should skip occupied sequences.
         let tmp = tempfile::tempdir().unwrap();
         let local_prefix = prefix_for(tmp.path());
-        let d1: usize = local_prefix[..1].parse().unwrap();
-        let d2: usize = local_prefix[1..2].parse().unwrap();
-        let d2_next = (d2 + 1) % 10;
-        let overflow_prefix = format!("{d1}{d2_next}");
+        let prefix_num: u32 = local_prefix.parse().unwrap();
+        let overflow_prefix = format!("{:02}", (prefix_num + 1) % 100);
 
         // Fill local prefix to 999
         write_task_file(tmp.path(), &format!("{local_prefix}999"));

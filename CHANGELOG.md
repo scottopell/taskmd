@@ -9,6 +9,24 @@ and this project follows [SemVer](https://semver.org/) calibrated by user impact
 
 ## [Unreleased]
 
+### Changed — Rust core (`taskmd-core`)
+
+- Task ID prefix is now `hash(machine_identity, tasks_directory_path) mod 100`
+  instead of `D1 = hash(hostname) mod 10` concatenated with
+  `D2 = hash(path) mod 10`. The split scheme effectively partitioned same-host
+  concurrent worktrees into only 10 buckets (D1 was fixed per machine); the
+  combined scheme uses the full 100. Birthday-50% collision point moves from
+  ~4 worktrees to ~12 for the same-host case. Cross-machine allocations also
+  span 100 buckets now instead of 10 (D1 alone). Same total prefix width
+  (2 digits), same total ID length (5 chars). Existing well-formed task IDs
+  are never migrated, so old tasks keep their prefixes; only newly minted IDs
+  use the new scheme.
+- `TASKMD_MACHINE_ID` env var now accepts any string (was: single digit 0-9).
+  Its value replaces the hostname in the prefix hash. Single-digit values
+  still work but no longer produce a specific D1 — they feed the hash like
+  any other string. Anyone who set the env var to pin a specific prefix will
+  see a different prefix after upgrade.
+
 ## [1.1.0] — 2026-05-15
 
 ### Added — Rust core (`taskmd-core`)

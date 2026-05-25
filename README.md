@@ -84,9 +84,9 @@ The filename is the **only** source of truth. The body is free-form markdown.
 
 ### Task IDs
 
-IDs are 5-digit numbers (e.g., `34042`). The first digit is derived from the machine's hostname, the second from the tasks directory path. This avoids ID collisions across machines and git worktrees without any coordination.
+IDs are 5-digit numbers (e.g., `34042`). The first two digits are a hash of `(machine_identity, tasks_directory_path)` mod 100. Different machines and different worktrees on the same machine land in different buckets, avoiding ID collisions without coordination. Birthday-50% collision point is ~12 concurrent worktrees.
 
-Set `TASKMD_MACHINE_ID=0` to pin the first digit on your primary machine.
+Set `TASKMD_MACHINE_ID` to override the machine-identity input (any string; replaces hostname in the hash). Useful in ephemeral containers where the hostname is constant across sessions.
 
 ## Library
 
