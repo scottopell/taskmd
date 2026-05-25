@@ -9,6 +9,8 @@ and this project follows [SemVer](https://semver.org/) calibrated by user impact
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-05-25
+
 ### Changed — Rust core (`taskmd-core`)
 
 - Task ID prefix is now `hash(machine_identity, tasks_directory_path) mod 100`
