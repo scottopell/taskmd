@@ -136,7 +136,7 @@ def schema(compact: bool = False) -> dict[str, Any]:
             "output": "FixResult with renames[], migrated count, renumbered[] (old_id/new_id/old_filename/new_filename for each duplicate-ID loser — cross-references NOT auto-patched), frontmatter_stripped[] (filenames whose YAML frontmatter was removed), errors[]. When neither --migrate nor --no-migrate is passed and frontmatter is detected, fix returns an error envelope whose data.frontmatter_pending lists the affected files.",
         },
         "next": {
-            "description": "Print the next available task ID (prefix derived from hostname + directory path). DISCOURAGED: this is a read-only advisory that doesn't claim the ID — two concurrent callers can receive the same ID. Prefer 'taskmd new' for creation; use 'next' only for integrations that must do their own write path.",
+            "description": "Print the next available task ID (prefix = hash(machine_identity, tasks_directory_path) mod 100). DISCOURAGED: this is a read-only advisory that doesn't claim the ID — two concurrent callers can receive the same ID. Prefer 'taskmd new' for creation; use 'next' only for integrations that must do their own write path.",
             "args": {"tasks_dir": {"type": "path", "default": "auto-detected from task*/_TEMPLATE.md, or explicit"}},
             "output": "Task ID string (5-digit numeric DDNNN format)",
             "prefer_instead": "new",

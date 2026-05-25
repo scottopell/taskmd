@@ -140,9 +140,15 @@ fn used_sequences(tasks_dir: &Path, prefix: &str) -> std::collections::HashSet<u
 /// Return the next available task ID for this tasks directory.
 ///
 /// Only considers tasks whose prefix matches the local prefix when
-/// computing the next sequence number. If the local prefix overflows
-/// (seq > 999), the prefix is bumped by 1 (mod 100) and sequences in
-/// the new prefix space are checked to avoid collisions.
+/// computing the next sequence number. If the local prefix is full
+/// (seq > 999), the prefix is bumped by 1 (mod 100) and successive
+/// prefix buckets are scanned until one with a free sequence is found.
+///
+/// # Panics
+///
+/// If every one of the 100 prefix buckets is exhausted (i.e. the tasks
+/// directory holds 99 900 tasks). This is a six-figure scale event and
+/// has not been observed in practice.
 pub fn next_id(tasks_dir: &Path) -> String {
     let prefix = prefix_for(tasks_dir);
 
@@ -152,20 +158,22 @@ pub fn next_id(tasks_dir: &Path) -> String {
 
     let local_seqs = used_sequences(tasks_dir, &prefix);
     let max_seq = local_seqs.iter().copied().max().unwrap_or(0);
-
     let next = max_seq + 1;
-    if next > MAX_SEQ {
-        let prefix_num: u32 = prefix.parse().expect("prefix_for returns 2-digit numeric");
-        let overflow_prefix = format!("{:02}", (prefix_num + 1) % 100);
-        let overflow_seqs = used_sequences(tasks_dir, &overflow_prefix);
-        let mut seq = 1u32;
-        while overflow_seqs.contains(&seq) && seq <= MAX_SEQ {
-            seq += 1;
-        }
-        format!("{overflow_prefix}{seq:03}")
-    } else {
-        format!("{prefix}{next:03}")
+    if next <= MAX_SEQ {
+        return format!("{prefix}{next:03}");
     }
+
+    let prefix_num: u32 = prefix.parse().expect("prefix_for returns 2-digit numeric");
+    for offset in 1..100 {
+        let candidate_prefix = format!("{:02}", (prefix_num + offset) % 100);
+        let seqs = used_sequences(tasks_dir, &candidate_prefix);
+        for seq in 1..=MAX_SEQ {
+            if !seqs.contains(&seq) {
+                return format!("{candidate_prefix}{seq:03}");
+            }
+        }
+    }
+    panic!("all 100 prefix buckets exhausted (each holds 999 tasks); tasks directory holds ~99 900 entries");
 }
 
 #[cfg(test)]
