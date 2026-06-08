@@ -21,7 +21,7 @@
 //! path is `dir.join(name)`, and the bare name is what gets interpolated into
 //! commit messages, prompts, `format!("{name}/{filename}")`, etc.
 
-use crate::constants::{DEFAULT_TASKS_DIR_NAME, TASKS_DIR_PREFIX, TEMPLATE_FILENAME};
+use crate::constants::{DEFAULT_TASKS_DIR_NAME, TEMPLATE_FILENAME};
 use std::path::{Path, PathBuf};
 
 /// Outcome of scanning a directory for a taskmd tasks directory.
@@ -39,9 +39,9 @@ pub enum Discovery {
 }
 
 /// Names of every immediate subdirectory of `dir` that looks like a taskmd
-/// tasks directory: the name starts with [`TASKS_DIR_PREFIX`] and the
-/// directory contains a [`TEMPLATE_FILENAME`] file. The result is sorted, so
-/// it is deterministic regardless of filesystem iteration order.
+/// tasks directory: the directory contains a [`TEMPLATE_FILENAME`] file. The
+/// result is sorted, so it is deterministic regardless of filesystem iteration
+/// order.
 ///
 /// IO errors (unreadable `dir`, races, permission denied on a child) are
 /// treated as "no match" rather than surfaced — this matches the Python CLI
@@ -53,9 +53,6 @@ pub fn candidates(dir: &Path) -> Vec<String> {
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !name.starts_with(TASKS_DIR_PREFIX) {
-            continue;
-        }
         // `<entry>/_TEMPLATE.md` resolving to a file is the only signal that
         // matters: it implies `<entry>` is a traversable directory. Both
         // `join` and `is_file` follow symlinks, so a symlink pointing at a
@@ -121,7 +118,7 @@ mod tests {
     #[test]
     fn no_candidates_is_not_found() {
         let tmp = TempDir::new().unwrap();
-        make_dir(tmp.path(), "tasks", false); // task-prefixed but unmarked
+        make_dir(tmp.path(), "tasks", false); // conventional name but unmarked
         make_dir(tmp.path(), "src", false);
         assert_eq!(candidates(tmp.path()), Vec::<String>::new());
         assert_eq!(discover(tmp.path()), Discovery::NotFound);
@@ -136,21 +133,40 @@ mod tests {
     }
 
     #[test]
-    fn non_task_prefixed_marked_dir_is_ignored() {
+    fn non_task_prefixed_marked_dir_is_found() {
         let tmp = TempDir::new().unwrap();
-        make_dir(tmp.path(), "todo", true); // marked, but wrong prefix
-        assert_eq!(discover(tmp.path()), Discovery::NotFound);
+        make_dir(tmp.path(), "tickets", true);
+        assert_eq!(candidates(tmp.path()), vec!["tickets".to_string()]);
+        assert_eq!(
+            discover(tmp.path()),
+            Discovery::Found("tickets".to_string())
+        );
     }
 
     #[test]
     fn multiple_marked_dirs_are_ambiguous_and_sorted() {
         let tmp = TempDir::new().unwrap();
         make_dir(tmp.path(), "tasks-archive", true);
-        make_dir(tmp.path(), "tasks", true);
+        make_dir(tmp.path(), "tickets", true);
+        make_dir(tmp.path(), "plans", true);
         assert_eq!(
             discover(tmp.path()),
-            Discovery::Ambiguous(vec!["tasks".to_string(), "tasks-archive".to_string()])
+            Discovery::Ambiguous(vec![
+                "plans".to_string(),
+                "tasks-archive".to_string(),
+                "tickets".to_string(),
+            ])
         );
+    }
+
+    #[test]
+    fn nested_marked_dirs_are_not_discovered() {
+        let tmp = TempDir::new().unwrap();
+        let nested = tmp.path().join("docs").join("tickets");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join(TEMPLATE_FILENAME), "# Task Title\n").unwrap();
+        assert_eq!(candidates(tmp.path()), Vec::<String>::new());
+        assert_eq!(discover(tmp.path()), Discovery::NotFound);
     }
 
     #[test]
@@ -164,9 +180,9 @@ mod tests {
     #[test]
     fn or_default_picks_lexically_first_when_no_conventional() {
         let tmp = TempDir::new().unwrap();
-        make_dir(tmp.path(), "task-z", true);
-        make_dir(tmp.path(), "task-a", true);
-        assert_eq!(discover_or_default(tmp.path()), PathBuf::from("task-a"));
+        make_dir(tmp.path(), "work-items", true);
+        make_dir(tmp.path(), "plans", true);
+        assert_eq!(discover_or_default(tmp.path()), PathBuf::from("plans"));
     }
 
     #[test]
@@ -179,10 +195,11 @@ mod tests {
     #[test]
     fn symlink_to_marked_dir_is_followed() {
         // Parity with the old Python CLI (`os.scandir().is_dir()` followed
-        // symlinks). A `task*`-named symlink pointing at a real marked dir
-        // must be discovered.
+        // symlinks). A symlink pointing at a real marked dir must be
+        // discovered, regardless of the symlink name.
         let tmp = TempDir::new().unwrap();
-        let real = tmp.path().join("real-store");
+        let store = TempDir::new().unwrap();
+        let real = store.path().join("real-store");
         std::fs::create_dir(&real).unwrap();
         std::fs::write(real.join(TEMPLATE_FILENAME), "# Task Title\n").unwrap();
         std::os::unix::fs::symlink(&real, tmp.path().join("tasks")).unwrap();

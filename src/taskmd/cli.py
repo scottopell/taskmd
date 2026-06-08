@@ -66,13 +66,12 @@ Options:
 
 Arguments:
   tasks_dir         Path to tasks directory. If omitted, taskmd auto-detects
-                    by scanning task*/ for _TEMPLATE.md.
+                    by scanning immediate child dirs for _TEMPLATE.md.
 
 Tasks directory:
   taskmd auto-detects the tasks directory by looking for _TEMPLATE.md in any
-  direct subdir whose name starts with 'task' (lowercase). Default name is
-  'tasks/'; pass an explicit name to 'init' if that's taken
-  (e.g., 'taskmd init taskmds').
+  direct subdir. Default name is 'tasks/'; pass an explicit name to 'init' if
+  that's taken (e.g., 'taskmd init tickets').
 
 Creating a task:
   echo "what this task is about" | taskmd new --slug fix-login
@@ -192,7 +191,7 @@ Examples:
 
 def _autodetect_tasks_dir() -> tuple[Path | None, list[str]]:
     """Scan cwd for a taskmd tasks directory via the canonical taskmd-core
-    discovery (a ``task*``-prefixed subdir holding ``_TEMPLATE.md``).
+    discovery (an immediate child directory holding ``_TEMPLATE.md``).
 
     Returns:
         (path, candidates):
@@ -347,7 +346,7 @@ def _resolve_read_tasks_dir(opts: dict, use_json: bool, command: str) -> Path:
         return found
 
     if not matches:
-        msg = "no taskmd directory found in task* subdirs of ./. Run 'taskmd init' to create one."
+        msg = "no taskmd directory found in immediate child dirs of ./. Run 'taskmd init' to create one."
         if use_json:
             print(error_envelope(
                 command,
@@ -744,7 +743,7 @@ def main(argv: list[str] | None = None) -> None:
                 status_tasks_dir = found
             elif not matches:
                 msg = (
-                    "no taskmd directory found in task* subdirs of ./. "
+                    "no taskmd directory found in immediate child dirs of ./. "
                     "Run 'taskmd init' to create one."
                 )
                 if use_json:

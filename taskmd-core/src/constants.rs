@@ -5,13 +5,15 @@ pub const TEMPLATE_FILENAME: &str = "_TEMPLATE.md";
 /// `discover` finds more than one candidate.
 pub const DEFAULT_TASKS_DIR_NAME: &str = "tasks";
 
-/// Discovery only considers immediate subdirectories whose name starts with
-/// this prefix (so `tasks/`, `task-archive/`, … but not unrelated dirs).
-pub const TASKS_DIR_PREFIX: &str = "task";
-
 /// Valid task statuses — alphabetical order matches Python's `sorted(VALID_STATUSES)`.
-pub const VALID_STATUSES: &[&str] =
-    &["blocked", "brainstorming", "done", "in-progress", "ready", "wont-do"];
+pub const VALID_STATUSES: &[&str] = &[
+    "blocked",
+    "brainstorming",
+    "done",
+    "in-progress",
+    "ready",
+    "wont-do",
+];
 
 /// Valid task priorities, ordered p0 (highest) to p4 (lowest).
 pub const VALID_PRIORITIES: &[&str] = &["p0", "p1", "p2", "p3", "p4"];
