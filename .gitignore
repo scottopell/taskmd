@@ -16,3 +16,4 @@ src/taskmd/_core*.pyd
 # macOS debug symbol bundles from cargo/maturin dev builds
 src/taskmd/*.dSYM/
 *.dSYM/
+.phoenix/
