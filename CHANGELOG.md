@@ -9,6 +9,12 @@ and this project follows [SemVer](https://semver.org/) calibrated by user impact
 
 ## [Unreleased]
 
+### Changed
+
+- Task directory auto-detection now accepts any immediate child directory that
+  contains `_TEMPLATE.md` (for example `tickets/`), not only names beginning
+  with `task`.
+
 ## [1.2.0] — 2026-05-25
 
 ### Changed — Rust core (`taskmd-core`)
@@ -40,9 +46,9 @@ and this project follows [SemVer](https://semver.org/) calibrated by user impact
   `discover_or_default(dir) -> PathBuf` applies a never-fails policy: prefer a
   candidate named exactly `tasks`, else the lexically-first candidate, else
   fall back to the bare name `tasks`.
-- `constants`: `TEMPLATE_FILENAME` (`"_TEMPLATE.md"`), `DEFAULT_TASKS_DIR_NAME`
-  (`"tasks"`), `TASKS_DIR_PREFIX` (`"task"`) — the literals discovery and
-  `init` were each hard-coding.
+- `constants`: `TEMPLATE_FILENAME` (`"_TEMPLATE.md"`) and
+  `DEFAULT_TASKS_DIR_NAME` (`"tasks"`) — the literals discovery and `init`
+  were each hard-coding.
 
 ### Added — Python (`taskmd`)
 
@@ -130,11 +136,10 @@ The 1.0 line is the first stable API. Everything below was bundled across
   gone — pass an explicit name (`taskmd init taskmds`) to create a
   different directory.
 - Read commands (`validate`, `fix`, `list`, `next`, `new`, `status`) auto-detect
-  the tasks directory by scanning cwd for direct subdirs whose name starts
-  with `task` (lowercase) and contain a `_TEMPLATE.md` marker. Multiple
-  matches now error with both names; zero matches now error pointing at
-  `taskmd init`. The previous "first existing of `tasks/`/`taskmds/` by
-  name" fallback is gone.
+  the tasks directory by scanning cwd for direct subdirs that contain a
+  `_TEMPLATE.md` marker. Multiple matches now error with both names; zero
+  matches now error pointing at `taskmd init`. The previous "first existing of
+  `tasks/`/`taskmds/` by name" fallback is gone.
 - `taskmd status <id> <new-status>` no-op (target == current) prints
   `<id>: already <status> (no change)` instead of a misleading
   self-rename arrow.

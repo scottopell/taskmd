@@ -314,7 +314,7 @@ def ensure_initialized(tasks_dir: Path | str = "tasks") -> EnsureResult:
 
 
 def discover_tasks_dir(start: Path | str = ".") -> tuple[Path | None, list[str]]:
-    """Scan ``start`` for a taskmd tasks directory (a ``task*``-prefixed subdir
+    """Scan ``start`` for a taskmd tasks directory (an immediate child directory
     holding ``_TEMPLATE.md``).
 
     Returns ``(path, candidates)``:

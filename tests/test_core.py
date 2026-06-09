@@ -1069,8 +1069,7 @@ class TestCliInitStrict:
 
 
 class TestCliAutoDetect:
-    """Auto-detect picks any direct subdir whose name starts with 'task'
-    AND contains _TEMPLATE.md."""
+    """Auto-detect picks any direct subdir containing _TEMPLATE.md."""
 
     def test_autodetect_finds_single_task_dir(self, tmp_path, capsys, monkeypatch):
         _unset_agent_env(monkeypatch)
@@ -1118,17 +1117,35 @@ class TestCliAutoDetect:
         assert "tasks/" in err
         assert "taskmds/" in err
 
-    def test_autodetect_ignores_non_task_prefix_dirs(self, tmp_path, capsys, monkeypatch):
+    def test_autodetect_finds_non_task_named_dir(self, tmp_path, capsys, monkeypatch):
         _unset_agent_env(monkeypatch)
         from taskmd.cli import main
         monkeypatch.chdir(tmp_path)
         (tmp_path / "tickets").mkdir()
         make_template(tmp_path / "tickets")
-        with pytest.raises(SystemExit) as exc:
-            main(["validate"])
-        assert exc.value.code == 1
-        err = capsys.readouterr().err
-        assert "no taskmd directory found" in err
+        main(["validate"])
+        out = capsys.readouterr().out
+        assert "validated" in out
+
+    def test_autodetect_non_task_named_dir_for_read_commands(self, tmp_path, capsys, monkeypatch):
+        _unset_agent_env(monkeypatch)
+        from taskmd.cli import main
+        monkeypatch.chdir(tmp_path)
+        tickets = tmp_path / "tickets"
+        tickets.mkdir()
+        make_template(tickets)
+        prefix = _prefix_for(tickets)
+        make_task(tickets, f"{prefix}001", "p2", "ready", "triage-bug")
+
+        main(["list"])
+        assert "triage-bug" in capsys.readouterr().out
+
+        main(["next"])
+        assert capsys.readouterr().out.strip() == f"{prefix}002"
+
+        main(["fix", "--no-migrate"])
+        out = capsys.readouterr().out
+        assert "All files already correct" in out or "✓" in out
 
     def test_autodetect_ignores_task_dir_without_template(self, tmp_path, capsys, monkeypatch):
         _unset_agent_env(monkeypatch)
@@ -1423,7 +1440,7 @@ class TestDiscoverTasksDir:
         assert candidates == ["taskmds"]
 
     def test_no_match(self, tmp_path):
-        (tmp_path / "tasks").mkdir()  # task-prefixed but no _TEMPLATE.md
+        (tmp_path / "tasks").mkdir()  # conventional name but no _TEMPLATE.md
         (tmp_path / "src").mkdir()
         found, candidates = discover_tasks_dir(tmp_path)
         assert found is None
@@ -1431,16 +1448,17 @@ class TestDiscoverTasksDir:
 
     def test_ambiguous_returns_sorted_candidates(self, tmp_path):
         self._mark(tmp_path, "tasks-archive")
-        self._mark(tmp_path, "tasks")
+        self._mark(tmp_path, "tickets")
+        self._mark(tmp_path, "plans")
         found, candidates = discover_tasks_dir(tmp_path)
         assert found is None
-        assert candidates == ["tasks", "tasks-archive"]
+        assert candidates == ["plans", "tasks-archive", "tickets"]
 
-    def test_non_task_prefix_ignored(self, tmp_path):
-        self._mark(tmp_path, "todo")  # marked but wrong prefix
+    def test_non_task_name_match(self, tmp_path):
+        d = self._mark(tmp_path, "tickets")
         found, candidates = discover_tasks_dir(tmp_path)
-        assert found is None
-        assert candidates == []
+        assert found == d
+        assert candidates == ["tickets"]
 
     def test_or_default_prefers_conventional_name(self, tmp_path):
         self._mark(tmp_path, "tasks-archive")
@@ -1448,9 +1466,9 @@ class TestDiscoverTasksDir:
         assert discover_tasks_dir_or_default(tmp_path) == tmp_path / "tasks"
 
     def test_or_default_picks_lexically_first(self, tmp_path):
-        self._mark(tmp_path, "task-z")
-        self._mark(tmp_path, "task-a")
-        assert discover_tasks_dir_or_default(tmp_path) == tmp_path / "task-a"
+        self._mark(tmp_path, "work-items")
+        self._mark(tmp_path, "plans")
+        assert discover_tasks_dir_or_default(tmp_path) == tmp_path / "plans"
 
     def test_or_default_falls_back_to_tasks(self, tmp_path):
         assert discover_tasks_dir_or_default(tmp_path) == tmp_path / "tasks"
