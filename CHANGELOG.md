@@ -9,6 +9,8 @@ and this project follows [SemVer](https://semver.org/) calibrated by user impact
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-06-09
+
 ### Changed
 
 - Task directory auto-detection now accepts any immediate child directory that

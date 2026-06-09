@@ -23,11 +23,27 @@ NEW=1.1.0
 
 # 2. Bump pyproject.toml AND both Cargo manifests in lockstep.
 #    The Cargo manifests use the SemVer pre-release form ("1.1.0-rc1"),
-#    pyproject.toml uses the PEP 440 form ("1.1.0rc1"). The sed below
-#    inserts the hyphen for Cargo if NEW contains "rc".
-sed -i '' "s/^version = \".*\"/version = \"$NEW\"/" pyproject.toml
-sed -i '' "s/^version = \".*\"/version = \"$(echo $NEW | sed 's/rc/-rc/')\"/" \
-    taskmd-core/Cargo.toml taskmd-py/Cargo.toml
+#    pyproject.toml uses the PEP 440 form ("1.1.0rc1"). This snippet
+#    inserts the hyphen for Cargo if NEW contains "rc" and works on both
+#    macOS and Linux.
+python - "$NEW" <<'PY'
+import sys
+from pathlib import Path
+
+pep440 = sys.argv[1]
+semver = pep440.replace("rc", "-rc", 1)
+for path, version in {
+    "pyproject.toml": pep440,
+    "taskmd-core/Cargo.toml": semver,
+    "taskmd-py/Cargo.toml": semver,
+}.items():
+    p = Path(path)
+    lines = p.read_text().splitlines(keepends=True)
+    p.write_text("".join(
+        f'version = "{version}"\n' if line.startswith("version = ") else line
+        for line in lines
+    ))
+PY
 cargo update -p taskmd-core -p taskmd-py
 
 # 3. Update CHANGELOG.md: rename the "Unreleased" heading to the new
