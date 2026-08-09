@@ -134,7 +134,8 @@ number (one greater than the current local-prefix maximum)
 WHEN no task files exist for the local prefix THE SYSTEM SHALL print `DD001`
 
 THE SYSTEM SHALL provide a `new` command that allocates an ID, formats the
-filename, and writes the file in one atomic step using O_EXCL
+filename, and writes the file without overwriting an existing task when another
+creator claims the same ID concurrently
 
 **Rationale:** Every agent and human creating a task needs to know what number
 to use. `new` is the recommended path because it eliminates the race condition

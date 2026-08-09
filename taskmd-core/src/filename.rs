@@ -37,7 +37,7 @@ pub static FILENAME_PATTERN: LazyLock<String> = LazyLock::new(|| {
 static FILENAME_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&FILENAME_PATTERN).expect("FILENAME_PATTERN is valid regex"));
 
-/// Parse a task filename into its constituent fields.
+/// REQ-TM-002: Parse a task filename into its constituent fields.
 /// Returns `None` if the name doesn't match the expected pattern.
 pub fn parse_filename(name: &str) -> Option<ParsedFilename> {
     let caps = FILENAME_RE.captures(name)?;

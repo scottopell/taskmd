@@ -196,8 +196,8 @@ fn mtime_unix(path: &Path) -> Option<i128> {
     Some(d.as_nanos() as i128)
 }
 
-/// Auto-fix task files: optionally strip legacy frontmatter, migrate legacy
-/// IDs to the numeric format, and renumber files that share a duplicate ID.
+/// REQ-TM-005: Auto-fix task files: optionally strip legacy frontmatter,
+/// migrate legacy IDs, and renumber files that share a duplicate ID.
 pub fn fix(tasks_dir: &Path, migrate_mode: MigrateMode) -> FixResult {
     let mut result = FixResult {
         renamed: 0,
