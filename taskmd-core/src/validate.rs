@@ -15,6 +15,7 @@ impl ValidationResult {
     }
 }
 
+/// REQ-TM-004: Validate canonical filenames and task-ID uniqueness.
 pub fn validate(tasks_dir: &Path) -> ValidationResult {
     let mut result = ValidationResult {
         errors: vec![],

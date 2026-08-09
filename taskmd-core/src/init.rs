@@ -36,7 +36,7 @@ impl InitResult {
     }
 }
 
-/// Initialise a tasks directory with a `_TEMPLATE.md` file.
+/// REQ-TM-007: Initialise a tasks directory with a `_TEMPLATE.md` file.
 ///
 /// Fails if `tasks_dir` already exists.
 pub fn init(tasks_dir: &Path) -> InitResult {

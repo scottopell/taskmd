@@ -4,8 +4,8 @@ use crate::constants::{Priority, Status, TEMPLATE_FILENAME};
 use crate::error::Error;
 use crate::filename::{derive_slug, format_filename, parse_filename};
 
-/// A parsed task file. All fields are derived from the filename — the file's
-/// body is free-form markdown and is not parsed.
+/// REQ-TM-001: A parsed task file. All fields are derived from the filename;
+/// the body is free-form markdown and is not parsed.
 #[derive(Debug, Clone)]
 pub struct TaskFile {
     pub path: PathBuf,
@@ -31,7 +31,8 @@ pub fn is_template(path: &Path) -> bool {
     path.file_name().map_or(false, |n| n == TEMPLATE_FILENAME)
 }
 
-/// Ancillary files have a second dot in the stem, e.g. `0042-p2-ready--foo.qaplan.md`.
+/// REQ-TM-008: Ancillary files have a second dot in the stem, such as
+/// `0042-p2-ready--foo.qaplan.md`.
 pub fn is_ancillary(path: &Path) -> bool {
     path.file_stem()
         .and_then(|s| s.to_str())
@@ -170,7 +171,7 @@ pub struct UpdateResult {
     pub new_filename: String,
 }
 
-/// Apply the changes in `update` to the task with `id` by renaming the file.
+/// REQ-TM-003: Apply `update` to the task with `id` by renaming the file.
 ///
 /// Atomic: a single rename produces all field changes at once. If `update` is
 /// effectively a no-op (every field is `None` or matches the current value),

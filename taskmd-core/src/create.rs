@@ -27,7 +27,8 @@ pub struct CreatedTask {
     pub filename: String,
 }
 
-/// Allocate an ID and atomically write a new task file containing only `body`.
+/// REQ-TM-006, REQ-TM-009: Allocate an ID and atomically write a new task file
+/// containing only the caller-supplied `body`.
 pub fn create_task(
     tasks_dir: &Path,
     priority: Priority,

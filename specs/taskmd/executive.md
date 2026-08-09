@@ -23,20 +23,22 @@ frontmatter and the body is opaque. Status transitions are pure file renames.
 Ancillary file detection uses a second-dot-segment pattern to skip `.qaplan.md`
 and `.qareport.md` consistently in both validate and fix. Duplicate-ID
 renumbering picks a winner via git-first-seen → mtime → lexicographic filename.
+The project has no living design document; significant rationale lives in the
+shared [`specs/adrs/`](../adrs/README.md) chain.
 
 ## Status Summary
 
 | Requirement | Status | Notes |
 | --- | --- | --- |
-| **REQ-TM-001:** View Tasks Without Tooling | ❌ Not Started | File-per-task, metadata in filename |
-| **REQ-TM-002:** Query Tasks by Status and Priority | ❌ Not Started | `NNNN-pX-status--slug.md` format |
-| **REQ-TM-003:** Unambiguous Task State | ❌ Not Started | Filename is the sole source of truth (no frontmatter) |
-| **REQ-TM-004:** Catch Inconsistencies Before Merge | ❌ Not Started | validate command |
-| **REQ-TM-005:** Repair Common Issues Automatically | ❌ Not Started | fix command |
-| **REQ-TM-006:** Discover Next Available Task Number | ❌ Not Started | next command |
-| **REQ-TM-007:** Consistent Starting Point | ❌ Not Started | _TEMPLATE.md |
-| **REQ-TM-008:** Associate QA Artifacts with Tasks | ❌ Not Started | `.qaplan.md`, `.qareport.md` |
-| **REQ-TM-009:** Self-Contained Agent Prompts | ❌ Not Started | Convention, not schema |
-| **REQ-TM-010:** Zero-Friction Adoption | ❌ Not Started | Single file, stdlib only, CI exit codes |
+| **REQ-TM-001:** View Tasks Without Tooling | ✅ Complete | File-per-task storage; list and discovery tests |
+| **REQ-TM-002:** Query Tasks by Status and Priority | ✅ Complete | Filename parser and round-trip property tests |
+| **REQ-TM-003:** Unambiguous Task State | ✅ Complete | Status/update tests; no-frontmatter creation contract |
+| **REQ-TM-004:** Catch Inconsistencies Before Merge | ✅ Complete | Validation unit and property tests |
+| **REQ-TM-005:** Repair Common Issues Automatically | ✅ Complete | Fix, migration, collision, and idempotence tests |
+| **REQ-TM-006:** Discover Next Available Task Number | ✅ Complete | Allocation, collision, and CLI tests |
+| **REQ-TM-007:** Consistent Starting Point | ✅ Complete | Init and template tests |
+| **REQ-TM-008:** Associate QA Artifacts with Tasks | ✅ Complete | Ancillary-file discovery and exclusion tests |
+| **REQ-TM-009:** Self-Contained Agent Prompts | ✅ Complete | Free-form body contract and repository task template |
+| **REQ-TM-010:** Zero-Friction Adoption | ✅ Complete | Maturin wheel build and CLI exit-code tests |
 
-**Progress:** 0 of 10 complete
+**Progress:** 10 of 10 complete

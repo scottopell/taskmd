@@ -15,9 +15,20 @@ src/taskmd/
   core.py          # Python shim over Rust _core extension
   cli.py           # CLI wrapper (thin, calls core)
   agent.py         # Agent detection, JSON envelopes, schema
-specs/taskmd/      # spEARS spec (requirements, design, executive)
+specs/adrs/        # Shared spEARS v2 architecture decision chain
+specs/taskmd/      # spEARS v2 feature spec (requirements + executive status)
 tasks/             # Task tracking (uses task.md itself)
 ```
+
+## spEARS v2
+
+- `requirements.md` is the timeless, normative user-facing contract.
+- `executive.md` is the only current-status document.
+- Significant design reasoning belongs in the shared `specs/adrs/` chain.
+- There is no living `design.md`; implementation details belong in code and
+  tests, with Allium added only when precise behavioral modeling is warranted.
+- Accepted ADRs are frozen. Supersede them with a new numbered ADR rather than
+  rewriting their decision history.
 
 ## Development
 
