@@ -129,18 +129,27 @@ the tool does not understand and is intentionally out of scope.
 ### REQ-TM-006: Discover Next Available Task Number
 
 WHEN the next command runs THE SYSTEM SHALL print the next available task
-number (one greater than the current local-prefix maximum)
+number (one greater than the local-prefix maximum visible in the working tree
+or locally known Git history)
 
-WHEN no task files exist for the local prefix THE SYSTEM SHALL print `DD001`
+WHEN a task ID exists on another locally known Git branch or reflog THE SYSTEM
+SHALL treat that ID as unavailable even when its file is absent from the current
+checkout
+
+WHEN no task files exist for the local prefix in either the working tree or
+locally known Git history THE SYSTEM SHALL print `DD001`
 
 THE SYSTEM SHALL provide a `new` command that allocates an ID, formats the
 filename, and writes the file without overwriting an existing task when another
 creator claims the same ID concurrently
 
 **Rationale:** Every agent and human creating a task needs to know what number
-to use. `new` is the recommended path because it eliminates the race condition
-between getting an ID and writing the file. `next` exists for integrations that
-must do their own write path.
+to use. A single worktree may create several unrelated branches from the same
+base; IDs already committed on sibling branches must not be reused merely
+because those task files are hidden by the current checkout. `new` is the
+recommended path because it eliminates the race condition between getting an
+ID and writing the file. `next` exists for integrations that must do their own
+write path.
 
 * * *
 

@@ -10,17 +10,21 @@ contract and implementation took their present shape.
 | ADR | Title | Status | Affects |
 | --- | --- | --- | --- |
 | [000](000_no-living-design-document.md) | taskmd has no living design document | Accepted | methodology-level |
+| [001](001_constrain-gix-to-read-only-history-access.md) | Constrain gix to read-only history access | Accepted | REQ-TM-006 |
 
 ## For agents: which decisions bind your task
 
 | Task type | Relevant ADRs |
 | --- | --- |
 | Adding or reorganizing specifications | 000 |
+| Changing task-ID allocation or Git traversal | 001 |
+| Introducing taskmd-owned allocation state | 001 |
 
 ## Decision dependencies
 
 ```text
 ADR-000 (no living design document)
+   └── ADR-001 records the gix decision in the project-level chain
 ```
 
 ## Conventions

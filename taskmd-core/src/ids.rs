@@ -1,4 +1,5 @@
 use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// Maximum sequence number that fits in the 3-digit NNN suffix.
@@ -118,31 +119,51 @@ pub fn parse_id_parts(task_id: &str) -> (String, u32) {
     }
 }
 
-/// Collect the set of sequence numbers used by tasks with a given prefix.
-fn used_sequences(tasks_dir: &Path, prefix: &str) -> std::collections::HashSet<u32> {
-    let mut seqs = std::collections::HashSet::new();
+/// Record a canonical task filename in the set of allocated sequences.
+fn record_filename(used: &mut HashMap<String, HashSet<u32>>, name: &str) {
+    if let Some(parsed) = crate::filename::parse_filename(name) {
+        let (prefix, sequence) = parse_id_parts(&parsed.id);
+        used.entry(prefix).or_default().insert(sequence);
+    }
+}
+
+/// Collect task sequences visible in the working tree and reported by a Git
+/// history backend.
+///
+/// Git history is the cross-branch coordination surface: a task committed on a
+/// sibling branch remains allocated even when that file is absent from the
+/// current checkout. If `tasks_dir` is not inside a readable Git repository,
+/// allocation remains filesystem-only.
+fn used_sequences(
+    tasks_dir: &Path,
+    historical_filenames: impl IntoIterator<Item = String>,
+) -> HashMap<String, HashSet<u32>> {
+    // REQ-TM-006
+    let mut used = HashMap::new();
+
     for path in crate::tasks::task_files(tasks_dir).unwrap_or_default() {
         let name = path
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        if let Some(parsed) = crate::filename::parse_filename(&name) {
-            let (pfx, seq) = parse_id_parts(&parsed.id);
-            if pfx == prefix {
-                seqs.insert(seq);
-            }
-        }
+        record_filename(&mut used, &name);
     }
-    seqs
+
+    for name in historical_filenames {
+        record_filename(&mut used, &name);
+    }
+
+    used
 }
 
 /// Return the next available task ID for this tasks directory.
 ///
-/// Only considers tasks whose prefix matches the local prefix when
-/// computing the next sequence number. If the local prefix is full
-/// (seq > 999), the prefix is bumped by 1 (mod 100) and successive
-/// prefix buckets are scanned until one with a free sequence is found.
+/// Considers tasks in both the working tree and locally known Git history,
+/// while only using IDs whose prefix matches the local prefix to compute the
+/// next sequence number. If the local prefix is full (seq > 999), the prefix
+/// is bumped by 1 (mod 100) and successive prefix buckets are scanned until
+/// one with a free sequence is found.
 ///
 /// # Panics
 ///
@@ -150,13 +171,18 @@ fn used_sequences(tasks_dir: &Path, prefix: &str) -> std::collections::HashSet<u
 /// directory holds 99 900 tasks). This is a six-figure scale event and
 /// has not been observed in practice.
 pub fn next_id(tasks_dir: &Path) -> String {
+    next_id_with_history(tasks_dir, crate::git_history::task_filenames(tasks_dir))
+}
+
+fn next_id_with_history(tasks_dir: &Path, historical_filenames: Vec<String>) -> String {
     let prefix = prefix_for(tasks_dir);
 
     if !tasks_dir.exists() {
         return format!("{prefix}001");
     }
 
-    let local_seqs = used_sequences(tasks_dir, &prefix);
+    let used = used_sequences(tasks_dir, historical_filenames);
+    let local_seqs = used.get(&prefix).cloned().unwrap_or_default();
     let max_seq = local_seqs.iter().copied().max().unwrap_or(0);
     let next = max_seq + 1;
     if next <= MAX_SEQ {
@@ -166,7 +192,7 @@ pub fn next_id(tasks_dir: &Path) -> String {
     let prefix_num: u32 = prefix.parse().expect("prefix_for returns 2-digit numeric");
     for offset in 1..100 {
         let candidate_prefix = format!("{:02}", (prefix_num + offset) % 100);
-        let seqs = used_sequences(tasks_dir, &candidate_prefix);
+        let seqs = used.get(&candidate_prefix).cloned().unwrap_or_default();
         for seq in 1..=MAX_SEQ {
             if !seqs.contains(&seq) {
                 return format!("{candidate_prefix}{seq:03}");
@@ -175,6 +201,9 @@ pub fn next_id(tasks_dir: &Path) -> String {
     }
     panic!("all 100 prefix buckets exhausted (each holds 999 tasks); tasks directory holds ~99 900 entries");
 }
+
+#[cfg(test)]
+mod differential_tests;
 
 #[cfg(test)]
 mod tests {

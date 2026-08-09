@@ -9,6 +9,19 @@ and this project follows [SemVer](https://semver.org/) calibrated by user impact
 
 ## [Unreleased]
 
+### Fixed
+
+- Task creation in a reused Git worktree no longer allocates the same ID on
+  unrelated sibling branches created from the same base. Allocation now treats
+  task filenames reachable through local refs, remote-tracking refs, and
+  reflogs as already used. No taskmd-owned counter or allocation ledger is
+  created; non-Git directories retain filesystem-only allocation.
+
+### Changed — Rust core (`taskmd-core`)
+
+- Git-history allocation now uses the pure-Rust `gix` library instead of
+  spawning the Git executable. The minimum supported Rust version is now 1.85.
+
 ## [1.3.0] — 2026-06-09
 
 ### Changed
