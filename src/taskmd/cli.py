@@ -168,6 +168,10 @@ Usage: taskmd next [--tasks-dir P] [tasks_dir]
 
 Print the next available task ID without claiming it.
 
+Inside a Git repository, IDs present on locally known branches and reflogs
+remain unavailable even when their task files are absent from this checkout.
+Outside Git, allocation considers the visible task files only.
+
 DISCOURAGED: two concurrent callers receive the same ID — the file
 is not created. Prefer 'taskmd new' for creation. Use 'next' only for
 integrations that must do their own write path.""",

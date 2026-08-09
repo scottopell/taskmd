@@ -27,6 +27,7 @@ pub mod discover;
 pub mod error;
 pub mod filename;
 pub mod fix;
+mod git_history;
 pub mod ids;
 pub mod init;
 pub mod tasks;
