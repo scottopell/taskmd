@@ -11,8 +11,10 @@ levels (p0 highest through p4 lowest) cover the full task lifecycle. Validation
 checks filenames for the canonical pattern and detects duplicate task numbers.
 Auto-fix migrates legacy ID formats and renumbers duplicate IDs without manual
 intervention. A `next` command prints the next available task number, and
-`new` allocates an ID and writes the file in one atomic step. Ancillary files
-(QA plans, QA reports) live alongside tasks using a dot convention.
+`new` allocates an ID and writes the file in one atomic step. IDs committed in
+locally known Git history remain reserved across sibling branch checkouts.
+Ancillary files (QA plans, QA reports) live alongside tasks using a dot
+convention.
 
 ## Technical Summary
 
@@ -23,6 +25,8 @@ frontmatter and the body is opaque. Status transitions are pure file renames.
 Ancillary file detection uses a second-dot-segment pattern to skip `.qaplan.md`
 and `.qareport.md` consistently in both validate and fix. Duplicate-ID
 renumbering picks a winner via git-first-seen → mtime → lexicographic filename.
+ID allocation unions working-tree filenames with filenames reachable from Git
+refs and reflogs, falling back to the working tree outside Git.
 
 ## Status Summary
 
@@ -33,10 +37,10 @@ renumbering picks a winner via git-first-seen → mtime → lexicographic filena
 | **REQ-TM-003:** Unambiguous Task State | ❌ Not Started | Filename is the sole source of truth (no frontmatter) |
 | **REQ-TM-004:** Catch Inconsistencies Before Merge | ❌ Not Started | validate command |
 | **REQ-TM-005:** Repair Common Issues Automatically | ❌ Not Started | fix command |
-| **REQ-TM-006:** Discover Next Available Task Number | ❌ Not Started | next command |
+| **REQ-TM-006:** Discover Next Available Task Number | ✅ Complete | Working tree + locally known Git history; Rust and Python suites pass |
 | **REQ-TM-007:** Consistent Starting Point | ❌ Not Started | _TEMPLATE.md |
 | **REQ-TM-008:** Associate QA Artifacts with Tasks | ❌ Not Started | `.qaplan.md`, `.qareport.md` |
 | **REQ-TM-009:** Self-Contained Agent Prompts | ❌ Not Started | Convention, not schema |
 | **REQ-TM-010:** Zero-Friction Adoption | ❌ Not Started | Single file, stdlib only, CI exit codes |
 
-**Progress:** 0 of 10 complete
+**Progress:** 1 of 10 complete

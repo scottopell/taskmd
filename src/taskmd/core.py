@@ -190,7 +190,7 @@ def _dict_to_task(d: _TaskDict) -> TaskFile:
 
 
 def next_id(tasks_dir: Path | str = "tasks") -> str:
-    """Return the next available task ID for this tasks directory."""
+    """Return the next ID across the working tree and locally known Git history."""
     return _next_id(str(Path(tasks_dir)))
 
 

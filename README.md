@@ -86,6 +86,8 @@ The filename is the **only** source of truth. The body is free-form markdown.
 
 IDs are 5-digit numbers (e.g., `34042`). The first two digits are a hash of `(machine_identity, tasks_directory_path)` mod 100. Different machines and different worktrees on the same machine land in different buckets, avoiding ID collisions without coordination. Birthday-50% collision point is ~12 concurrent worktrees.
 
+Within one Git worktree, allocation also considers task filenames on locally known branches and reflogs. Reusing a worktree for several sibling branches therefore does not reuse an ID just because another branch's task file is absent from the current checkout. taskmd keeps no separate counter or allocation ledger; outside Git it falls back to the visible task files.
+
 Set `TASKMD_MACHINE_ID` to override the machine-identity input (any string; replaces hostname in the hash). Useful in ephemeral containers where the hostname is constant across sessions.
 
 ## Library

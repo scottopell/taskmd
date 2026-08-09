@@ -1,5 +1,7 @@
 use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::process::Command;
 
 /// Maximum sequence number that fits in the 3-digit NNN suffix.
 const MAX_SEQ: u32 = 999;
@@ -118,31 +120,68 @@ pub fn parse_id_parts(task_id: &str) -> (String, u32) {
     }
 }
 
-/// Collect the set of sequence numbers used by tasks with a given prefix.
-fn used_sequences(tasks_dir: &Path, prefix: &str) -> std::collections::HashSet<u32> {
-    let mut seqs = std::collections::HashSet::new();
+/// Record a canonical task filename in the set of allocated sequences.
+fn record_filename(used: &mut HashMap<String, HashSet<u32>>, name: &str) {
+    if let Some(parsed) = crate::filename::parse_filename(name) {
+        let (prefix, sequence) = parse_id_parts(&parsed.id);
+        used.entry(prefix).or_default().insert(sequence);
+    }
+}
+
+/// Collect task sequences visible in the working tree and reachable through
+/// the repository's refs and reflogs.
+///
+/// Git history is the cross-branch coordination surface: a task committed on a
+/// sibling branch remains allocated even when that file is absent from the
+/// current checkout. If `tasks_dir` is not inside a Git repository (or Git is
+/// unavailable), allocation remains filesystem-only.
+fn used_sequences(tasks_dir: &Path) -> HashMap<String, HashSet<u32>> {
+    // REQ-TM-006
+    let mut used = HashMap::new();
+
     for path in crate::tasks::task_files(tasks_dir).unwrap_or_default() {
         let name = path
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        if let Some(parsed) = crate::filename::parse_filename(&name) {
-            let (pfx, seq) = parse_id_parts(&parsed.id);
-            if pfx == prefix {
-                seqs.insert(seq);
+        record_filename(&mut used, &name);
+    }
+
+    let history = Command::new("git")
+        .args([
+            "log",
+            "--all",
+            "--reflog",
+            "--name-only",
+            "--format=",
+            "--",
+            ".",
+        ])
+        .current_dir(tasks_dir)
+        .output();
+
+    if let Ok(output) = history {
+        if output.status.success() {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let Some(name) = Path::new(line).file_name() else {
+                    continue;
+                };
+                record_filename(&mut used, &name.to_string_lossy());
             }
         }
     }
-    seqs
+
+    used
 }
 
 /// Return the next available task ID for this tasks directory.
 ///
-/// Only considers tasks whose prefix matches the local prefix when
-/// computing the next sequence number. If the local prefix is full
-/// (seq > 999), the prefix is bumped by 1 (mod 100) and successive
-/// prefix buckets are scanned until one with a free sequence is found.
+/// Considers tasks in both the working tree and locally known Git history,
+/// while only using IDs whose prefix matches the local prefix to compute the
+/// next sequence number. If the local prefix is full (seq > 999), the prefix
+/// is bumped by 1 (mod 100) and successive prefix buckets are scanned until
+/// one with a free sequence is found.
 ///
 /// # Panics
 ///
@@ -156,7 +195,8 @@ pub fn next_id(tasks_dir: &Path) -> String {
         return format!("{prefix}001");
     }
 
-    let local_seqs = used_sequences(tasks_dir, &prefix);
+    let used = used_sequences(tasks_dir);
+    let local_seqs = used.get(&prefix).cloned().unwrap_or_default();
     let max_seq = local_seqs.iter().copied().max().unwrap_or(0);
     let next = max_seq + 1;
     if next <= MAX_SEQ {
@@ -166,7 +206,7 @@ pub fn next_id(tasks_dir: &Path) -> String {
     let prefix_num: u32 = prefix.parse().expect("prefix_for returns 2-digit numeric");
     for offset in 1..100 {
         let candidate_prefix = format!("{:02}", (prefix_num + offset) % 100);
-        let seqs = used_sequences(tasks_dir, &candidate_prefix);
+        let seqs = used.get(&candidate_prefix).cloned().unwrap_or_default();
         for seq in 1..=MAX_SEQ {
             if !seqs.contains(&seq) {
                 return format!("{candidate_prefix}{seq:03}");
@@ -179,6 +219,20 @@ pub fn next_id(tasks_dir: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn git(repo: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .output()
+            .unwrap_or_else(|error| panic!("failed to run git {args:?}: {error}"));
+        assert!(
+            output.status.success(),
+            "git {args:?} failed:\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
 
     #[test]
     fn is_legacy_id_works() {
@@ -407,6 +461,59 @@ mod tests {
             "next_id returned {id} (seq {seq}), expected seq 1 — \
              no local-prefix tasks exist"
         );
+    }
+
+    #[test]
+    fn next_id_does_not_reuse_sequence_from_sibling_branch() {
+        // Issue #15: one physical worktree is reused for several unrelated
+        // branches created from the same base. Files committed on the first
+        // branch disappear after switching back to main, but their IDs remain
+        // allocated in Git history.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        let tasks_dir = repo.join("tasks");
+
+        git(repo, &["init"]);
+        git(repo, &["config", "user.name", "taskmd test"]);
+        git(repo, &["config", "user.email", "taskmd@example.invalid"]);
+        std::fs::create_dir(&tasks_dir).unwrap();
+        std::fs::write(tasks_dir.join("_TEMPLATE.md"), "# Template\n").unwrap();
+        git(repo, &["add", "."]);
+        git(repo, &["commit", "-m", "base"]);
+        git(repo, &["branch", "-M", "main"]);
+
+        git(repo, &["switch", "-c", "fix-one"]);
+        let first = crate::create::create_task(
+            &tasks_dir,
+            crate::constants::Priority::P2,
+            crate::constants::Status::Ready,
+            "first-fix",
+            "first bug fix",
+        )
+        .unwrap();
+        git(repo, &["add", "."]);
+        git(repo, &["commit", "-m", "first fix"]);
+
+        git(repo, &["switch", "main"]);
+        git(repo, &["switch", "-c", "fix-two"]);
+        assert!(
+            !tasks_dir.join(&first.filename).exists(),
+            "the sibling branch must reproduce the hidden-task scenario"
+        );
+
+        let second = crate::create::create_task(
+            &tasks_dir,
+            crate::constants::Priority::P2,
+            crate::constants::Status::Ready,
+            "second-fix",
+            "second bug fix",
+        )
+        .unwrap();
+
+        let (first_prefix, first_sequence) = parse_id_parts(&first.id);
+        let (second_prefix, second_sequence) = parse_id_parts(&second.id);
+        assert_eq!(second_prefix, first_prefix);
+        assert_eq!(second_sequence, first_sequence + 1);
     }
 
     // -- Bug 5: overflow should check target prefix space for collisions --

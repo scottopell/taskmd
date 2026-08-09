@@ -17,7 +17,9 @@ this crate. Use this crate directly if you want to build your own integration
 ```
 
 - `id`: 5 ASCII digits, prefixed by a 2-digit machine+directory hash so multiple
-  checkouts on different machines don't collide.
+  checkouts on different machines don't collide. Sequence allocation includes
+  locally known Git refs and reflogs, preventing reuse across sibling branches
+  created in one worktree without a separate allocation ledger.
 - `priority`: one of `p0`, `p1`, `p2`, `p3`, `p4`.
 - `status`: one of `new`, `ready`, `in-progress`, `blocked`, `done`, `cancelled`.
 - `slug`: `[a-z0-9-]+`, ≤ 40 chars, derived from the title.

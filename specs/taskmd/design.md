@@ -104,9 +104,16 @@ taskmd next [tasks/]
 
 Algorithm:
 1. Glob `*.md` in task directory (same skip rules)
-2. Parse task numbers from all filenames whose prefix matches the local prefix
-3. Print `max(numbers) + 1`, formatted as DDNNN
-4. If no tasks exist for this prefix, print `DD001`
+2. When inside a Git repository, read historical task filenames reachable from
+   all refs and reflogs for the same task directory
+3. Parse task numbers from the union of working-tree and historical filenames
+   whose prefix matches the local prefix
+4. Print `max(numbers) + 1`, formatted as DDNNN
+5. If no tasks exist for this prefix, print `DD001`
+
+Git history is existing repository state, not a taskmd allocation ledger. When
+Git is unavailable or the task directory is outside a repository, the command
+falls back to the working-tree scan.
 
 ### `new` (REQ-TM-006)
 
